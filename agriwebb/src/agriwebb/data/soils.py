@@ -8,11 +8,11 @@ service to get soil map unit data for each paddock's location.
 import asyncio
 import json
 import re
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
 import httpx
 
-from agriwebb.core import get_fields, get_cache_dir
+from agriwebb.core import get_cache_dir, get_fields
 
 USDA_SOIL_URL = "https://SDMDataAccess.sc.egov.usda.gov/TABULAR/post.rest"
 
@@ -133,7 +133,7 @@ async def query_soil_by_mukey(mukey: str) -> dict | None:
 
                     components = []
                     for row in data_rows:
-                        comp = dict(zip(columns, row))
+                        comp = dict(zip(columns, row, strict=False))
                         components.append(comp)
 
                     if components:

@@ -300,7 +300,7 @@ def estimate_par(latitude: float, day_of_year: int) -> float:
     cos_hour_angle = -math.tan(lat_rad) * math.tan(dec_rad)
     cos_hour_angle = max(-1, min(1, cos_hour_angle))  # Clamp for polar regions
     hour_angle = math.degrees(math.acos(cos_hour_angle))
-    day_length = 2 * hour_angle / 15  # hours
+    _day_length = 2 * hour_angle / 15  # hours (unused but kept for reference)
 
     # Extraterrestrial radiation
     dr = 1 + 0.033 * math.cos(2 * math.pi * day_of_year / 365)

@@ -10,10 +10,9 @@ First run will prompt for GEE authentication.
 import asyncio
 import json
 from datetime import date, timedelta
-from pathlib import Path
 
+from agriwebb.core import get_cache_dir, get_fields, settings
 from agriwebb.satellite import gee as satellite
-from agriwebb.core import get_fields, settings, get_cache_dir
 
 
 async def main():

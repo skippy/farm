@@ -17,11 +17,11 @@ Subpackages:
 # Re-export common items for convenience
 from agriwebb.core import (
     client,
-    settings,
-    graphql,
     get_farm,
     get_farm_location,
     get_fields,
+    graphql,
+    settings,
 )
 
 __all__ = [

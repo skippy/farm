@@ -59,7 +59,7 @@ async def test_agriwebb_connection() -> dict | None:
 
     try:
         farm = await client.get_farm()
-        print(f"  [OK] Connected to AgriWebb")
+        print("  [OK] Connected to AgriWebb")
         print(f"       Farm: {farm['name']}")
         print(f"       Timezone: {farm.get('timeZone', 'Unknown')}")
         location = farm.get("address", {}).get("location", {})
@@ -97,14 +97,14 @@ async def test_ncei_connection() -> str | None:
                 if data:
                     raw_name = data[0].get("NAME", "Unknown")
                     station_name = format_station_name(raw_name)
-                    print(f"  [OK] Station found")
+                    print("  [OK] Station found")
                     print(f"       ID: {station_id}")
                     print(f"       Name: {station_name}")
                     print()
                     return station_name
                 else:
                     print(f"  [WARNING] Station {station_id} returned no data")
-                    print(f"            Station may be inactive or ID may be incorrect")
+                    print("            Station may be inactive or ID may be incorrect")
                     print()
                     return None
             else:
@@ -133,7 +133,7 @@ async def test_gee_connection() -> bool:
         ee.Initialize(project=settings.gee_project_id)
         # Simple test - get a known image
         ee.Image("USGS/SRTMGL1_003").getInfo()
-        print(f"  [OK] Connected to Google Earth Engine")
+        print("  [OK] Connected to Google Earth Engine")
         print(f"       Project: {settings.gee_project_id}")
         print()
         return True
@@ -153,7 +153,7 @@ async def setup_rain_gauge(station_name: str | None, farm: dict | None) -> str |
     print("-" * 50)
 
     if settings.agriwebb_weather_sensor_id:
-        print(f"  [OK] Rain gauge configured")
+        print("  [OK] Rain gauge configured")
         print(f"       ID: {settings.agriwebb_weather_sensor_id}")
         print()
         return settings.agriwebb_weather_sensor_id
@@ -182,9 +182,9 @@ async def setup_rain_gauge(station_name: str | None, farm: dict | None) -> str |
             return None
 
         sensor_id = await client.create_rain_gauge(gauge_name, lat, lng)
-        print(f"  [OK] Rain gauge created!")
+        print("  [OK] Rain gauge created!")
         print()
-        print(f"  Add to your .env file:")
+        print("  Add to your .env file:")
         print(f"    AGRIWEBB_WEATHER_SENSOR_ID={sensor_id}")
         print()
         print(f"  Or add as GitHub secret with value: {sensor_id}")
@@ -239,24 +239,24 @@ async def main() -> None:
     if farm:
         print(f"  AgriWebb:  Connected ({farm['name']})")
     else:
-        print(f"  AgriWebb:  NOT CONNECTED")
+        print("  AgriWebb:  NOT CONNECTED")
         all_ok = False
 
     if station_name:
         print(f"  NOAA:      Connected ({station_name})")
     else:
-        print(f"  NOAA:      NOT CONNECTED")
+        print("  NOAA:      NOT CONNECTED")
         all_ok = False
 
     if gee_ok:
-        print(f"  Satellite: Connected (GEE)")
+        print("  Satellite: Connected (GEE)")
     else:
-        print(f"  Satellite: Not configured (optional)")
+        print("  Satellite: Not configured (optional)")
 
     if sensor_id:
-        print(f"  Rain gauge: Ready")
+        print("  Rain gauge: Ready")
     else:
-        print(f"  Rain gauge: NOT CONFIGURED")
+        print("  Rain gauge: NOT CONFIGURED")
         all_ok = False
 
     print()

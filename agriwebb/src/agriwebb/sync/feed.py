@@ -17,17 +17,16 @@ Usage:
 import argparse
 import asyncio
 import json
-from datetime import date, datetime
-from pathlib import Path
+from datetime import date
 
-from agriwebb.pasture.biomass import (
-    ndvi_to_standing_dry_matter,
-    get_season,
-    EXPECTED_UNCERTAINTY,
-    adjust_foo_for_grazing,
-)
 from agriwebb.core import add_feed_on_offer_batch, add_standing_dry_matter_batch, get_cache_dir
 from agriwebb.data.grazing import calculate_paddock_consumption, load_farm_data, load_fields
+from agriwebb.pasture.biomass import (
+    EXPECTED_UNCERTAINTY,
+    adjust_foo_for_grazing,
+    get_season,
+    ndvi_to_standing_dry_matter,
+)
 from agriwebb.satellite.moss import get_all_paddock_moss
 
 
@@ -374,7 +373,8 @@ async def main():
             if "errors" in str(result):
                 print(f"Sync failed: {result}")
             else:
-                print(f"Sync complete: {len([r for r in foo_data if 'negative_ndvi' not in r['quality_flags']])} records pushed")
+                valid_count = len([r for r in foo_data if 'negative_ndvi' not in r['quality_flags']])
+                print(f"Sync complete: {valid_count} records pushed")
 
 
 def cli():

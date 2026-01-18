@@ -12,8 +12,8 @@ from agriwebb.weather import openmeteo
 from agriwebb.weather.ncei import (
     fetch_ncei_date_range,
     list_rainfalls,
-    sync_weather,
     save_weather_json,
+    sync_weather,
 )
 
 
@@ -92,6 +92,7 @@ async def cmd_cache(args: argparse.Namespace) -> None:
 async def update_noaa_cache(refresh: bool = False) -> None:
     """Update NOAA weather cache smartly."""
     import json
+
     from agriwebb.core import get_cache_dir
 
     cache_path = get_cache_dir() / "noaa_weather.json"
@@ -134,7 +135,7 @@ async def update_noaa_cache(refresh: bool = False) -> None:
                     existing_records[record["date"]] = record
                 noaa_data = sorted(existing_records.values(), key=lambda x: x["date"])
 
-            json_path = save_weather_json(noaa_data, "noaa_weather.json")
+            save_weather_json(noaa_data, "noaa_weather.json")
             print(f"  Cached {len(noaa_data)} days from NOAA")
         else:
             print("  No NOAA data available")

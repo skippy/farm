@@ -826,9 +826,10 @@ async def cli_main() -> None:
             print(f"  {k}: {v}")
 
     elif args.command == "cache":
-        from agriwebb.sync.animals import sync_all, get_cache_dir, DEFAULT_CACHE_FILE
-        from pathlib import Path
         from datetime import datetime, timedelta
+        from pathlib import Path
+
+        from agriwebb.sync.animals import DEFAULT_CACHE_FILE, get_cache_dir, sync_all
 
         if args.output:
             output_path = Path(args.output)
@@ -843,7 +844,7 @@ async def cli_main() -> None:
             age = datetime.now() - mtime
             if age < timedelta(hours=1):
                 print(f"Cache is fresh ({int(age.total_seconds() / 60)} minutes old)")
-                print(f"Use --refresh to force re-download")
+                print("Use --refresh to force re-download")
                 print(f"File: {output_path}")
                 return
 
