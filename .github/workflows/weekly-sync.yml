@@ -46,6 +46,14 @@ jobs:
           restore-keys: |
             agriwebb-data-
 
+      - name: Sync animal data from AgriWebb
+        env:
+          AGRIWEBB_API_KEY: ${{ secrets.AGRIWEBB_API_KEY }}
+          AGRIWEBB_FARM_ID: ${{ secrets.AGRIWEBB_FARM_ID }}
+        run: |
+          mkdir -p .cache
+          uv run agriwebb-livestock cache
+
       - name: Set up Google Earth Engine credentials
         env:
           GEE_SERVICE_ACCOUNT_KEY: ${{ secrets.GEE_SERVICE_ACCOUNT_KEY }}
@@ -95,6 +103,7 @@ jobs:
         run: |
           echo "## Weekly Satellite Sync" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Animal data synced from AgriWebb" >> $GITHUB_STEP_SUMMARY
           echo "- Satellite NDVI-based growth rates calculated (adaptive window)" >> $GITHUB_STEP_SUMMARY
           echo "- Rainfall data synced (NOAA + Open-Meteo)" >> $GITHUB_STEP_SUMMARY
           if [ "${{ inputs.dry_run }}" = "true" ]; then
