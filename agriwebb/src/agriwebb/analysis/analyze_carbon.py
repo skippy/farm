@@ -8,13 +8,11 @@ Usage:
 
 import argparse
 import json
-from pathlib import Path
 
 from agriwebb.analysis.carbon import (
-    calculate_gpp,
-    estimate_annual_sequestration,
-    PastureType,
     CO2_PER_C,
+    PastureType,
+    estimate_annual_sequestration,
 )
 from agriwebb.core import get_cache_dir
 
@@ -141,7 +139,7 @@ def main():
 
     farm_totals = {}
 
-    for pid, pdata in all_results.items():
+    for _pid, pdata in all_results.items():
         name = pdata["name"][:24]
         area = pdata["area_ha"]
 
@@ -167,14 +165,16 @@ def main():
     print("Farm-Wide Annual Totals")
     print("=" * 80)
     print()
-    print(f"{'Year':>6} {'Area':>8} {'Total GPP':>12} {'Total NPP':>12} {'C Sequestered':>14} {'CO2 Seq':>12}")
+    print(f"{'Year':>6} {'Area':>8} {'Total GPP':>12} {'Total NPP':>12} "
+          f"{'C Sequestered':>14} {'CO2 Seq':>12}")
     print(f"{'':>6} {'(ha)':>8} {'(t C)':>12} {'(t C)':>12} {'(t C)':>14} {'(t CO2)':>12}")
     print("-" * 70)
 
     for year in sorted(farm_totals.keys()):
         t = farm_totals[year]
         seq_co2 = t["seq"] * CO2_PER_C
-        print(f"{year:>6} {t['area']:>8.1f} {t['gpp']:>12.1f} {t['npp']:>12.1f} {t['seq']:>14.2f} {seq_co2:>12.1f}")
+        print(f"{year:>6} {t['area']:>8.1f} {t['gpp']:>12.1f} {t['npp']:>12.1f} "
+              f"{t['seq']:>14.2f} {seq_co2:>12.1f}")
 
     # Save results
     output_file = get_cache_dir() / "carbon_analysis.json"

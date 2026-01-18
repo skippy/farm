@@ -23,15 +23,14 @@ References:
 [3] CSIRO GRAZPLAN - GrassGro documentation
 """
 
+import json
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from enum import Enum
-import json
 from pathlib import Path
 from typing import TypedDict
 
 from agriwebb.core import get_cache_dir
-
 
 # -----------------------------------------------------------------------------
 # Constants and Configuration
@@ -402,12 +401,13 @@ def load_paddock_soils(cache_path: Path | None = None, auto_fetch: bool = True) 
     if not cache_path.exists():
         if auto_fetch:
             import asyncio
+
             from agriwebb.data.soils import fetch_all_paddock_soils
             print("Soil data not cached. Fetching from USDA...")
             # Handle both sync and async contexts
             try:
-                loop = asyncio.get_running_loop()
-                # We're in an async context - create a task
+                asyncio.get_running_loop()
+                # We're in an async context - use thread pool
                 import concurrent.futures
                 with concurrent.futures.ThreadPoolExecutor() as pool:
                     pool.submit(asyncio.run, fetch_all_paddock_soils(verbose=False)).result()

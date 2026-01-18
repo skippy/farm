@@ -8,24 +8,26 @@ import argparse
 import asyncio
 import json
 from datetime import date, timedelta
-from pathlib import Path
 
-from agriwebb.weather import openmeteo
-from agriwebb.core import add_pasture_growth_rates_batch, add_standing_dry_matter_batch, get_fields, settings
+from agriwebb.core import (
+    add_pasture_growth_rates_batch,
+    add_standing_dry_matter_batch,
+    get_cache_dir,
+    get_fields,
+    settings,
+)
 from agriwebb.data.grazing import calculate_paddock_consumption, load_farm_data, load_fields
 from agriwebb.data.historical import (
     compare_to_historical,
     get_monthly_averages,
     load_weather_history,
 )
+from agriwebb.pasture.biomass import ndvi_to_standing_dry_matter
 from agriwebb.pasture.growth import (
-    PaddockGrowthModel,
     calculate_farm_growth,
     load_paddock_soils,
 )
-from agriwebb.weather import openmeteo, fetch_ncei_date_range, save_weather_json
-from agriwebb.pasture.biomass import ndvi_to_standing_dry_matter
-from agriwebb.core import get_cache_dir
+from agriwebb.weather import fetch_ncei_date_range, openmeteo, save_weather_json
 
 
 def load_fields_for_sync() -> dict[str, str]:
@@ -255,7 +257,7 @@ async def cmd_estimate(args: argparse.Namespace) -> None:
     grazed = [(n, d) for n, d in estimates["estimates"].items() if d["animal_count"] > 0]
     resting = [(n, d) for n, d in estimates["estimates"].items() if d["animal_count"] == 0]
 
-    print(f"\n--- Summary ---")
+    print("\n--- Summary ---")
     print(f"Paddocks with animals: {len(grazed)}")
     print(f"Paddocks resting: {len(resting)}")
 
@@ -279,12 +281,14 @@ async def cmd_estimate(args: argparse.Namespace) -> None:
             print(f"\n--- Historical Context ({comparison['month_name']}) ---")
             print(f"Current growth: {comparison['current_growth']:.1f} kg/ha/day")
             print(f"Historical avg: {comparison['historical_avg']:.1f} kg/ha/day ({comparison['years_of_data']} years)")
-            print(f"Status: {comparison['status'].upper()} ({comparison['deviation']:+.1f} kg, {comparison['deviation_pct']:+.1f}%)")
+            status = comparison['status'].upper()
+            dev, dev_pct = comparison['deviation'], comparison['deviation_pct']
+            print(f"Status: {status} ({dev:+.1f} kg, {dev_pct:+.1f}%)")
     except Exception as e:
         print(f"\n(Historical comparison unavailable: {e})")
 
     if args.forecast and estimates.get("forecast"):
-        print(f"\n7-Day Growth Projection:")
+        print("\n7-Day Growth Projection:")
         print(f"{'Paddock':<25} {'Projected Total':<18} {'Avg/Day'}")
         print("-" * 55)
 
@@ -524,6 +528,7 @@ async def update_noaa_cache_smart(refresh: bool = False) -> None:
 async def update_ndvi_cache_smart(refresh: bool = False) -> None:
     """Update NDVI historical cache smartly (only fetch missing months)."""
     import json
+
     from agriwebb.satellite import gee as satellite
     from agriwebb.satellite.ndvi_historical import fetch_paddock_history
 

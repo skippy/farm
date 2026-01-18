@@ -17,7 +17,7 @@ from pathlib import Path
 
 import httpx
 
-from agriwebb.core import graphql, settings, get_cache_dir
+from agriwebb.core import get_cache_dir, graphql, settings
 
 DEFAULT_CACHE_FILE = "animals.json"
 

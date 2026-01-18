@@ -11,7 +11,6 @@ Then aggregates consumption by paddock to estimate grazing pressure.
 """
 
 import json
-from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import TypedDict
@@ -424,8 +423,8 @@ def get_grazing_summary(cache_path: Path | None = None) -> dict:
         if dam:
             dam_name = (dam.get("identity") or {}).get("name", dam_id[:8])
             lamb_names = [
-                (l.get("identity") or {}).get("name", "?")
-                for l in lambs
+                (lamb.get("identity") or {}).get("name", "?")
+                for lamb in lambs
             ]
             lactating_ewes.append({
                 "dam_id": dam_id,
@@ -465,16 +464,17 @@ def main():
     print(f"Lambs nursing: {summary['total_lambs_nursing']}")
 
     if summary["lactating_ewes"]:
-        print(f"\nLactating ewes:")
+        print("\nLactating ewes:")
         for ewe in summary["lactating_ewes"]:
-            print(f"  {ewe['dam_name']}: {ewe['lamb_count']} lamb(s) - {', '.join(ewe['lamb_names'])}")
+            lambs_str = ', '.join(ewe['lamb_names'])
+            print(f"  {ewe['dam_name']}: {ewe['lamb_count']} lamb(s) - {lambs_str}")
 
-    print(f"\nConsumption by paddock:")
+    print("\nConsumption by paddock:")
     print(f"{'Paddock':<25} {'Animals':<10} {'Intake/day':<15} {'per ha'}")
     print("-" * 65)
 
     consumption = summary["paddock_consumption"]
-    for pid, data in sorted(consumption.items(), key=lambda x: -x[1]["intake_per_ha_kg_day"]):
+    for _pid, data in sorted(consumption.items(), key=lambda x: -x[1]["intake_per_ha_kg_day"]):
         print(
             f"{data['paddock_name']:<25} "
             f"{data['animal_count']:<10} "

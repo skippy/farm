@@ -14,17 +14,14 @@ This helps answer questions like:
 
 import json
 from collections import defaultdict
-from dataclasses import dataclass
-from datetime import date, timedelta
-from pathlib import Path
+from datetime import date
 from typing import TypedDict
 
 from agriwebb.core import get_cache_dir
 from agriwebb.pasture.growth import (
+    SoilWaterState,
     calculate_daily_growth,
     get_season,
-    SoilWaterState,
-    SEASONAL_MAX_GROWTH,
 )
 
 
@@ -349,15 +346,15 @@ def main():
                 f"{m['avg_temp_c']:>5.1f}°C"
             )
 
-    print(f"\n--- Seasonal Summary ---")
+    print("\n--- Seasonal Summary ---")
     for season, data in seasonal.items():
         print(f"  {season.capitalize():<10}: {data['avg_growth_kg_ha_day']:.1f} kg DM/ha/day")
 
-    print(f"\n--- Year-over-Year Trend ---")
+    print("\n--- Year-over-Year Trend ---")
     print(f"  Trend: {trends['trend']}")
     print(f"  Slope: {trends['trend_slope_per_year']:+.2f} kg/ha/day per year")
 
-    print(f"\n  Yearly averages:")
+    print("\n  Yearly averages:")
     for year, avg in sorted(trends["yearly_averages"].items()):
         print(f"    {year}: {avg:.1f} kg DM/ha/day")
 

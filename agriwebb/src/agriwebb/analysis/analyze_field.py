@@ -3,8 +3,8 @@
 import asyncio
 from datetime import date, timedelta
 
-from agriwebb.satellite import gee as satellite
 from agriwebb.core import get_fields, settings
+from agriwebb.satellite import gee as satellite
 
 
 async def analyze_field(paddock: dict, end_date: date) -> list[dict]:

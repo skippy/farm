@@ -15,7 +15,7 @@ from pathlib import Path
 
 import httpx
 
-from agriwebb.core import client, settings, get_cache_dir
+from agriwebb.core import client, get_cache_dir, settings
 from agriwebb.weather import openmeteo
 
 NCEI_API_URL = "https://www.ncei.noaa.gov/access/services/data/v1"

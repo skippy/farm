@@ -2,9 +2,8 @@
 
 import asyncio
 import json
-from pathlib import Path
 
-from agriwebb.core import get_fields, get_cache_dir
+from agriwebb.core import get_cache_dir, get_fields
 
 
 async def main():

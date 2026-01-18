@@ -10,7 +10,6 @@ This module estimates moss fraction to correct FOO calculations.
 """
 
 import json
-from pathlib import Path
 from typing import TypedDict
 
 from agriwebb.core import get_cache_dir
@@ -362,13 +361,13 @@ def main():
     avg_moss = sum(e["moss_fraction"] for e in estimates.values()) / len(estimates)
     high_moss = [e for e in estimates.values() if e["moss_fraction"] > 0.2]
 
-    print(f"\n--- Summary ---")
+    print("\n--- Summary ---")
     print(f"Paddocks analyzed: {len(estimates)}")
     print(f"Average moss fraction: {avg_moss*100:.1f}%")
     print(f"High moss (>20%): {len(high_moss)} paddocks")
 
     if high_moss:
-        print(f"\nHigh moss paddocks:")
+        print("\nHigh moss paddocks:")
         for e in sorted(high_moss, key=lambda x: -x["moss_fraction"]):
             print(f"  {e['paddock_name']}: {e['moss_fraction']*100:.0f}% moss")
 

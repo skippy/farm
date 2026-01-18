@@ -14,7 +14,6 @@ import argparse
 import asyncio
 import json
 from datetime import date, timedelta
-from pathlib import Path
 
 from agriwebb.core import add_pasture_growth_rates_batch, get_cache_dir
 from agriwebb.data.historical import load_weather_history
@@ -87,7 +86,7 @@ async def backfill_growth(
         print(f"  Adjusted end to: {end_date}")
 
     # Calculate growth for entire period
-    print(f"\nCalculating growth rates...")
+    print("\nCalculating growth rates...")
     results = calculate_farm_growth(
         start_date=start_date,
         end_date=end_date,
@@ -119,7 +118,7 @@ async def backfill_growth(
     all_records.sort(key=lambda r: r["record_date"])
 
     # Show sample of data
-    print(f"\nSample records (first 5):")
+    print("\nSample records (first 5):")
     for rec in all_records[:5]:
         print(f"  {rec['record_date']}: {rec['field_name']:<20} {rec['growth_rate']:.1f} kg/ha/day")
 
@@ -135,7 +134,7 @@ async def backfill_growth(
             by_month[month]["count"] += 1
             by_month[month]["total_growth"] += rec["growth_rate"]
 
-        print(f"\nMonthly summary:")
+        print("\nMonthly summary:")
         for month in sorted(by_month.keys()):
             data = by_month[month]
             avg = data["total_growth"] / data["count"]
@@ -177,7 +176,7 @@ async def backfill_growth(
         if i + batch_size < len(all_records):
             await asyncio.sleep(0.5)
 
-    print(f"\nBackfill complete!")
+    print("\nBackfill complete!")
     print(f"  Records pushed: {total_pushed}")
     if errors:
         print(f"  Errors: {len(errors)}")

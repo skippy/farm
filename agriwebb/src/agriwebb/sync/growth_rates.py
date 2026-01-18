@@ -18,9 +18,9 @@ import argparse
 import asyncio
 from datetime import date, timedelta
 
-from agriwebb.satellite import gee as satellite
-from agriwebb.pasture.biomass import EXPECTED_UNCERTAINTY, calculate_growth_rate
 from agriwebb.core import add_pasture_growth_rates_batch, get_fields, settings
+from agriwebb.pasture.biomass import EXPECTED_UNCERTAINTY, calculate_growth_rate
+from agriwebb.satellite import gee as satellite
 
 
 def get_adaptive_window_size(target_date: date) -> int:
