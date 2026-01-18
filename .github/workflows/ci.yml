@@ -31,6 +31,10 @@ jobs:
         run: uv sync
 
       - name: Run tests
+        env:
+          NCEI_STATION_ID: "TEST000000"
+          AGRIWEBB_API_KEY: "test-key"
+          AGRIWEBB_FARM_ID: "test-farm-id"
         run: uv run pytest tests/ -v
 
       - name: Summary
