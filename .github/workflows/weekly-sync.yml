@@ -29,6 +29,8 @@ jobs:
         uses: astral-sh/setup-uv@v4
         with:
           version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "agriwebb/pyproject.toml"
 
       - name: Set up Python
         run: uv python install 3.12
@@ -36,15 +38,13 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
-      - name: Restore cache
+      - name: Restore data cache
         uses: actions/cache@v4
         with:
           path: .cache
-          key: agriwebb-weekly-${{ github.run_id }}
+          key: agriwebb-data-${{ github.run_id }}
           restore-keys: |
-            agriwebb-weekly-
-            agriwebb-daily-
-            agriwebb-
+            agriwebb-data-
 
       - name: Set up Google Earth Engine credentials
         env:
@@ -83,12 +83,12 @@ jobs:
             uv run agriwebb-weather sync --days 14
           fi
 
-      - name: Save cache
+      - name: Save data cache
         uses: actions/cache/save@v4
         if: always()
         with:
           path: .cache
-          key: agriwebb-weekly-${{ github.run_id }}
+          key: agriwebb-data-${{ github.run_id }}
 
       - name: Summary
         if: always()
