@@ -35,6 +35,7 @@ jobs:
           NCEI_STATION_ID: "TEST000000"
           AGRIWEBB_API_KEY: "test-key"
           AGRIWEBB_FARM_ID: "test-farm-id"
+          AGRIWEBB_WEATHER_SENSOR_ID: "test-sensor-id"
         run: uv run pytest tests/ -v
 
       - name: Summary
