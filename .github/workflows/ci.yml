@@ -30,6 +30,9 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
+      - name: Lint with ruff
+        run: uv run ruff check src/
+
       - name: Run tests
         env:
           NCEI_STATION_ID: "TEST000000"
@@ -43,4 +46,5 @@ jobs:
         run: |
           echo "## CI Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Lint completed" >> $GITHUB_STEP_SUMMARY
           echo "- Tests completed" >> $GITHUB_STEP_SUMMARY
