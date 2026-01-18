@@ -40,9 +40,11 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .cache
-          key: agriwebb-cache-${{ github.run_id }}
+          key: agriwebb-weekly-${{ github.run_id }}
           restore-keys: |
-            agriwebb-cache-
+            agriwebb-weekly-
+            agriwebb-daily-
+            agriwebb-
 
       - name: Set up Google Earth Engine credentials
         env:
@@ -86,7 +88,7 @@ jobs:
         if: always()
         with:
           path: .cache
-          key: agriwebb-cache-${{ github.run_id }}
+          key: agriwebb-weekly-${{ github.run_id }}
 
       - name: Summary
         if: always()

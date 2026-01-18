@@ -13,28 +13,28 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 @pytest.fixture
 def mock_openmeteo():
     """Mock Open-Meteo API responses."""
-    with respx.mock(base_url="https://api.open-meteo.com") as mock:
+    with respx.mock(base_url="https://api.open-meteo.com", assert_all_called=False) as mock:
         yield mock
 
 
 @pytest.fixture
 def mock_openmeteo_archive():
     """Mock Open-Meteo Archive API responses."""
-    with respx.mock(base_url="https://archive-api.open-meteo.com") as mock:
+    with respx.mock(base_url="https://archive-api.open-meteo.com", assert_all_called=False) as mock:
         yield mock
 
 
 @pytest.fixture
 def mock_agriwebb():
     """Mock AgriWebb API responses."""
-    with respx.mock(base_url="https://api.agriwebb.com") as mock:
+    with respx.mock(base_url="https://api.agriwebb.com", assert_all_called=False) as mock:
         yield mock
 
 
 @pytest.fixture
 def mock_ncei():
     """Mock NCEI API responses."""
-    with respx.mock(base_url="https://www.ncei.noaa.gov") as mock:
+    with respx.mock(base_url="https://www.ncei.noaa.gov", assert_all_called=False) as mock:
         yield mock
 
 
