@@ -1,0 +1,25 @@
+"""Analysis modules - carbon sequestration and emissions models.
+
+Note: Pasture growth and biomass models have moved to agriwebb.pasture.
+"""
+
+from agriwebb.analysis.carbon import (
+    calculate_gpp,
+    estimate_annual_sequestration,
+    estimate_sheep_methane,
+    estimate_livestock_methane,
+    PastureType,
+    CO2_PER_C,
+    CH4_GWP,
+)
+
+__all__ = [
+    # carbon
+    "calculate_gpp",
+    "estimate_annual_sequestration",
+    "estimate_sheep_methane",
+    "estimate_livestock_methane",
+    "PastureType",
+    "CO2_PER_C",
+    "CH4_GWP",
+]

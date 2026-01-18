@@ -1,0 +1,102 @@
+name: Weekly Satellite Sync
+
+on:
+  schedule:
+    # Run weekly on Sunday at 8:00 AM UTC (12:00 AM PST / 1:00 AM PDT)
+    - cron: '0 8 * * 0'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (no push to AgriWebb)'
+        required: false
+        default: 'false'
+        type: boolean
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    defaults:
+      run:
+        working-directory: agriwebb
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Restore cache
+        uses: actions/cache@v4
+        with:
+          path: .cache
+          key: agriwebb-cache-${{ github.run_id }}
+          restore-keys: |
+            agriwebb-cache-
+
+      - name: Set up Google Earth Engine credentials
+        env:
+          GEE_SERVICE_ACCOUNT_KEY: ${{ secrets.GEE_SERVICE_ACCOUNT_KEY }}
+        run: |
+          if [ -n "$GEE_SERVICE_ACCOUNT_KEY" ]; then
+            mkdir -p ~/.config/earthengine
+            echo "$GEE_SERVICE_ACCOUNT_KEY" > ~/.config/earthengine/credentials.json
+          fi
+
+      - name: Sync standing dry matter from satellite
+        env:
+          NCEI_STATION_ID: ${{ secrets.NCEI_STATION_ID }}
+          AGRIWEBB_API_KEY: ${{ secrets.AGRIWEBB_API_KEY }}
+          AGRIWEBB_FARM_ID: ${{ secrets.AGRIWEBB_FARM_ID }}
+          AGRIWEBB_WEATHER_SENSOR_ID: ${{ secrets.AGRIWEBB_WEATHER_SENSOR_ID }}
+          GEE_PROJECT_ID: ${{ secrets.GEE_PROJECT_ID }}
+        run: |
+          mkdir -p .cache
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            uv run agriwebb-pasture sync --sdm --dry-run
+          else
+            uv run agriwebb-pasture sync --sdm
+          fi
+
+      - name: Sync rainfall data (NOAA + Open-Meteo)
+        env:
+          NCEI_STATION_ID: ${{ secrets.NCEI_STATION_ID }}
+          AGRIWEBB_API_KEY: ${{ secrets.AGRIWEBB_API_KEY }}
+          AGRIWEBB_FARM_ID: ${{ secrets.AGRIWEBB_FARM_ID }}
+          AGRIWEBB_WEATHER_SENSOR_ID: ${{ secrets.AGRIWEBB_WEATHER_SENSOR_ID }}
+        run: |
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            uv run agriwebb-weather sync --days 14 --dry-run
+          else
+            uv run agriwebb-weather sync --days 14
+          fi
+
+      - name: Save cache
+        uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: .cache
+          key: agriwebb-cache-${{ github.run_id }}
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Weekly Satellite Sync" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Satellite NDVI-based growth rates calculated (adaptive window)" >> $GITHUB_STEP_SUMMARY
+          echo "- Rainfall data synced (NOAA + Open-Meteo)" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            echo "- **Dry run** - no data pushed to AgriWebb" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- All data synced to AgriWebb" >> $GITHUB_STEP_SUMMARY
+          fi

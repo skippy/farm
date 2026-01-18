@@ -1,0 +1,91 @@
+name: Daily Growth Sync
+
+on:
+  schedule:
+    # Run daily at 6:00 AM UTC (10:00 PM PST / 11:00 PM PDT)
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (no push to AgriWebb)'
+        required: false
+        default: 'false'
+        type: boolean
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        working-directory: agriwebb
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Restore cache
+        uses: actions/cache@v4
+        with:
+          path: .cache
+          key: agriwebb-cache-${{ github.run_id }}
+          restore-keys: |
+            agriwebb-cache-
+
+      - name: Sync weather data
+        env:
+          NCEI_STATION_ID: ${{ secrets.NCEI_STATION_ID }}
+          AGRIWEBB_API_KEY: ${{ secrets.AGRIWEBB_API_KEY }}
+          AGRIWEBB_FARM_ID: ${{ secrets.AGRIWEBB_FARM_ID }}
+          AGRIWEBB_WEATHER_SENSOR_ID: ${{ secrets.AGRIWEBB_WEATHER_SENSOR_ID }}
+        run: |
+          mkdir -p .cache
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            uv run agriwebb-weather sync --days 7 --dry-run
+          else
+            uv run agriwebb-weather sync --days 7
+          fi
+
+      - name: Calculate and sync growth estimates
+        env:
+          NCEI_STATION_ID: ${{ secrets.NCEI_STATION_ID }}
+          AGRIWEBB_API_KEY: ${{ secrets.AGRIWEBB_API_KEY }}
+          AGRIWEBB_FARM_ID: ${{ secrets.AGRIWEBB_FARM_ID }}
+          AGRIWEBB_WEATHER_SENSOR_ID: ${{ secrets.AGRIWEBB_WEATHER_SENSOR_ID }}
+        run: |
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            uv run agriwebb-pasture sync --growth-rate --forecast --dry-run
+          else
+            uv run agriwebb-pasture sync --growth-rate --forecast
+          fi
+
+      - name: Save cache
+        uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: .cache
+          key: agriwebb-cache-${{ github.run_id }}
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Daily Growth Sync" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            echo "- **Dry run** - no data pushed to AgriWebb" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- Weather data synced to AgriWebb" >> $GITHUB_STEP_SUMMARY
+            echo "- Growth rates synced to AgriWebb" >> $GITHUB_STEP_SUMMARY
+          fi

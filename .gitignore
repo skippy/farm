@@ -1,0 +1,26 @@
+# Environment
+.env
+service-account.json
+
+# Claude Code
+.claude/
+
+# Local cache (synced data)
+.cache/
+.cache*/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.coverage
+htmlcov/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
