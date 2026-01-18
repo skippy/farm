@@ -29,6 +29,8 @@ jobs:
         uses: astral-sh/setup-uv@v4
         with:
           version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "agriwebb/uv.lock"
 
       - name: Set up Python
         run: uv python install 3.12
@@ -36,14 +38,13 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
-      - name: Restore cache
+      - name: Restore data cache
         uses: actions/cache@v4
         with:
           path: .cache
-          key: agriwebb-daily-${{ github.run_id }}
+          key: agriwebb-data-${{ github.run_id }}
           restore-keys: |
-            agriwebb-daily-
-            agriwebb-
+            agriwebb-data-
 
       - name: Sync weather data
         env:
@@ -72,12 +73,12 @@ jobs:
             uv run agriwebb-pasture sync --growth-rate --forecast
           fi
 
-      - name: Save cache
+      - name: Save data cache
         uses: actions/cache/save@v4
         if: always()
         with:
           path: .cache
-          key: agriwebb-daily-${{ github.run_id }}
+          key: agriwebb-data-${{ github.run_id }}
 
       - name: Summary
         if: always()
