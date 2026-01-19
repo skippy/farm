@@ -4,7 +4,7 @@ import httpx
 import pytest
 
 from agriwebb.core import client
-from agriwebb.core.client import GraphQLError
+from agriwebb.core.client import AgriWebbAPIError
 from agriwebb.weather import api as weather_api
 
 
@@ -180,7 +180,7 @@ class TestCreateRainGauge:
         """Verify error raised when API returns errors."""
         mock_agriwebb.post("/v2").mock(return_value=httpx.Response(200, json={"errors": [{"message": "Failed"}]}))
 
-        with pytest.raises(GraphQLError, match="Failed"):
+        with pytest.raises(AgriWebbAPIError, match="Failed"):
             await weather_api.create_rain_gauge("Test", 0, 0)
 
 
@@ -273,5 +273,5 @@ class TestUpdateMapFeature:
             ]
         )
 
-        with pytest.raises(GraphQLError, match="Update failed"):
+        with pytest.raises(AgriWebbAPIError, match="Update failed"):
             await client.update_map_feature("id", "New Name")

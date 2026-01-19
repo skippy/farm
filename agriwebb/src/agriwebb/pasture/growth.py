@@ -404,18 +404,17 @@ def load_paddock_soils(cache_path: Path | None = None, auto_fetch: bool = True) 
 
             from agriwebb.data.soils import fetch_all_paddock_soils
 
-            print("Soil data not cached. Fetching from USDA...")
-            # Handle both sync and async contexts
+            # Handle both sync and async contexts (no progress output when auto-fetching)
             try:
                 asyncio.get_running_loop()
                 # We're in an async context - use thread pool
                 import concurrent.futures
 
                 with concurrent.futures.ThreadPoolExecutor() as pool:
-                    pool.submit(asyncio.run, fetch_all_paddock_soils(verbose=False)).result()
+                    pool.submit(asyncio.run, fetch_all_paddock_soils()).result()
             except RuntimeError:
                 # No running loop - safe to use asyncio.run
-                asyncio.run(fetch_all_paddock_soils(verbose=False))
+                asyncio.run(fetch_all_paddock_soils())
         else:
             return {}
 

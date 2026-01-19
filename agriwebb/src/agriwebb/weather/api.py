@@ -86,7 +86,7 @@ async def create_rain_gauge(name: str, lat: float, lng: float) -> str:
     Returns:
         The created sensor ID
     """
-    from agriwebb.core.client import graphql
+    from agriwebb.core.client import graphql_with_retry
 
     variables = {
         "farmId": settings.agriwebb_farm_id,
@@ -94,7 +94,7 @@ async def create_rain_gauge(name: str, lat: float, lng: float) -> str:
         "lat": lat,
         "lng": lng,
     }
-    result = await graphql(CREATE_RAIN_GAUGE_MUTATION, variables)
+    result = await graphql_with_retry(CREATE_RAIN_GAUGE_MUTATION, variables)
 
     features = result.get("data", {}).get("addMapFeatures", {}).get("features", [])
     if not features:
@@ -119,7 +119,7 @@ async def add_rainfall(
     Returns:
         AgriWebb API response
     """
-    from agriwebb.core.client import graphql
+    from agriwebb.core.client import graphql_with_retry
 
     sensor = sensor_id or settings.agriwebb_weather_sensor_id
     if not sensor:
@@ -135,7 +135,7 @@ async def add_rainfall(
         "time": timestamp_ms,
     }
 
-    return await graphql(ADD_RAINFALL_MUTATION, variables)
+    return await graphql_with_retry(ADD_RAINFALL_MUTATION, variables)
 
 
 async def get_rainfalls(
@@ -149,7 +149,7 @@ async def get_rainfalls(
         Date filtering is not yet supported with variables due to complex
         filter syntax. Currently returns all records for the sensor.
     """
-    from agriwebb.core.client import graphql
+    from agriwebb.core.client import graphql_with_retry
 
     sensor = sensor_id or settings.agriwebb_weather_sensor_id
     if not sensor:
@@ -181,12 +181,12 @@ async def get_rainfalls(
           }}
         }}
         """
-        result = await graphql(query)
+        result = await graphql_with_retry(query)
     else:
         variables = {
             "farmId": settings.agriwebb_farm_id,
             "sensorId": sensor,
         }
-        result = await graphql(RAINFALLS_QUERY, variables)
+        result = await graphql_with_retry(RAINFALLS_QUERY, variables)
 
     return result.get("data", {}).get("rainfalls", [])

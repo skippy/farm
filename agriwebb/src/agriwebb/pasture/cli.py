@@ -644,7 +644,7 @@ async def cmd_cache(args: argparse.Namespace) -> None:
     try:
         from agriwebb.data.soils import fetch_all_paddock_soils
 
-        await fetch_all_paddock_soils()
+        await fetch_all_paddock_soils(on_progress=print)
     except Exception as e:
         print(f"Warning: Could not fetch soil data: {e}")
 

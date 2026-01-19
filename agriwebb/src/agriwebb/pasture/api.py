@@ -70,7 +70,7 @@ async def add_pasture_growth_rates_batch(
     Returns:
         AgriWebb API response
     """
-    from agriwebb.core.client import graphql
+    from agriwebb.core.client import graphql_with_retry
 
     inputs = []
     for rec in records:
@@ -85,7 +85,7 @@ async def add_pasture_growth_rates_batch(
         )
 
     variables = {"input": inputs}
-    return await graphql(ADD_PASTURE_GROWTH_RATE_MUTATION, variables)
+    return await graphql_with_retry(ADD_PASTURE_GROWTH_RATE_MUTATION, variables)
 
 
 async def add_feed_on_offer_batch(
@@ -107,7 +107,7 @@ async def add_feed_on_offer_batch(
     Note:
         API only accepts records within the last 14 days.
     """
-    from agriwebb.core.client import graphql
+    from agriwebb.core.client import graphql_with_retry
 
     inputs = []
     for rec in records:
@@ -123,7 +123,7 @@ async def add_feed_on_offer_batch(
         )
 
     variables = {"input": inputs}
-    return await graphql(ADD_FEED_ON_OFFER_MUTATION, variables)
+    return await graphql_with_retry(ADD_FEED_ON_OFFER_MUTATION, variables)
 
 
 async def add_standing_dry_matter_batch(
@@ -144,7 +144,7 @@ async def add_standing_dry_matter_batch(
     Note:
         API only accepts records within the last 14 days.
     """
-    from agriwebb.core.client import graphql
+    from agriwebb.core.client import graphql_with_retry
 
     inputs = []
     for rec in records:
@@ -159,4 +159,4 @@ async def add_standing_dry_matter_batch(
         )
 
     variables = {"input": inputs}
-    return await graphql(ADD_STANDING_DRY_MATTER_MUTATION, variables)
+    return await graphql_with_retry(ADD_STANDING_DRY_MATTER_MUTATION, variables)

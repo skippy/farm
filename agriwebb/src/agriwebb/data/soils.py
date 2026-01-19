@@ -8,6 +8,7 @@ service to get soil map unit data for each paddock's location.
 import asyncio
 import json
 import re
+from collections.abc import Callable
 from datetime import UTC, datetime
 
 import httpx
@@ -80,8 +81,19 @@ async def get_mukey_at_point(lat: float, lon: float) -> str | None:
     return None
 
 
-async def query_soil_by_mukey(mukey: str) -> dict | None:
-    """Query soil properties for a given map unit key."""
+async def query_soil_by_mukey(
+    mukey: str,
+    on_progress: Callable[[str], None] | None = None,
+) -> dict | None:
+    """Query soil properties for a given map unit key.
+
+    Args:
+        mukey: USDA map unit key
+        on_progress: Optional callback for progress/error messages
+
+    Returns:
+        Soil data dict or None if not found
+    """
     columns = [
         "mukey",
         "muname",
@@ -167,15 +179,28 @@ async def query_soil_by_mukey(mukey: str) -> dict | None:
                             "all_components": components,
                         }
     except Exception as e:
-        print(f"    Error querying mukey {mukey}: {e}")
+        if on_progress:
+            on_progress(f"    Error querying mukey {mukey}: {e}")
     return None
 
 
-async def query_soil_at_point(lat: float, lon: float) -> dict | None:
+async def query_soil_at_point(
+    lat: float,
+    lon: float,
+    on_progress: Callable[[str], None] | None = None,
+) -> dict | None:
     """
     Query USDA Soil Data Access for soil info at a point.
 
     Uses SoilWeb to get mukey, then USDA SDA for properties.
+
+    Args:
+        lat: Latitude
+        lon: Longitude
+        on_progress: Optional callback for progress/error messages
+
+    Returns:
+        Soil data dict or None if not found
     """
     # Try SoilWeb's reflector API
     try:
@@ -191,35 +216,48 @@ async def query_soil_at_point(lat: float, lon: float) -> dict | None:
                 mukey_match = re.search(r"mukey=(\d{6,7})", html)
                 if mukey_match:
                     mukey = mukey_match.group(1)
-                    result = await query_soil_by_mukey(mukey)
+                    result = await query_soil_by_mukey(mukey, on_progress=on_progress)
                     if result:
                         return result
 
                 # Pattern 2: <td> NNNNNN </td>
                 cells = re.findall(r"<td>\s*(\d{6,7})\s*</td>", html)
                 for cell in cells:
-                    result = await query_soil_by_mukey(cell)
+                    result = await query_soil_by_mukey(cell, on_progress=on_progress)
                     if result:
                         return result
 
     except Exception as e:
-        print(f"    SoilWeb error: {e}")
+        if on_progress:
+            on_progress(f"    SoilWeb error: {e}")
 
     # Fallback: Try the WFS approach
     mukey = await get_mukey_at_point(lat, lon)
     if mukey:
-        return await query_soil_by_mukey(mukey)
+        return await query_soil_by_mukey(mukey, on_progress=on_progress)
 
     return None
 
 
-async def fetch_all_paddock_soils(verbose: bool = True) -> dict:
-    """Fetch soil data for all paddocks."""
-    if verbose:
-        print("Fetching paddocks from AgriWebb...")
+async def fetch_all_paddock_soils(
+    on_progress: Callable[[str], None] | None = None,
+) -> dict:
+    """Fetch soil data for all paddocks.
+
+    Args:
+        on_progress: Optional callback for progress updates, called with (message: str)
+
+    Returns:
+        Dict of paddock soil data keyed by paddock name
+    """
+
+    def log(msg: str) -> None:
+        if on_progress:
+            on_progress(msg)
+
+    log("Fetching paddocks from AgriWebb...")
     fields = await get_fields(min_area_ha=0.2)
-    if verbose:
-        print(f"Found {len(fields)} paddocks")
+    log(f"Found {len(fields)} paddocks")
 
     paddock_soils = {}
     errors = []
@@ -230,18 +268,17 @@ async def fetch_all_paddock_soils(verbose: bool = True) -> dict:
         area_ha = field.get("totalArea", 0)
         geometry = field.get("geometry", {})
 
-        if verbose:
-            print(f"[{i}/{len(fields)}] {name}...", end=" ", flush=True)
+        if on_progress:
+            on_progress(f"[{i}/{len(fields)}] {name}... ")
 
         centroid = calculate_centroid(geometry)
         if not centroid:
-            if verbose:
-                print("skipped (no geometry)")
+            log("skipped (no geometry)")
             errors.append({"name": name, "error": "No valid geometry"})
             continue
 
         lat, lon = centroid
-        soil_data = await query_soil_at_point(lat, lon)
+        soil_data = await query_soil_at_point(lat, lon, on_progress=on_progress)
 
         if soil_data:
             paddock_soils[name] = {
@@ -250,11 +287,9 @@ async def fetch_all_paddock_soils(verbose: bool = True) -> dict:
                 "centroid": {"lat": lat, "lon": lon},
                 "soil": soil_data,
             }
-            if verbose:
-                print(f"{soil_data.get('drainage', 'Unknown')}")
+            log(f"{soil_data.get('drainage', 'Unknown')}")
         else:
-            if verbose:
-                print("no data")
+            log("no data")
             errors.append({"name": name, "error": "No soil data returned"})
 
         # Small delay to be nice to USDA servers
@@ -272,10 +307,9 @@ async def fetch_all_paddock_soils(verbose: bool = True) -> dict:
     with open(output_path, "w") as f:
         json.dump(output, f, indent=2)
 
-    if verbose:
-        print(f"\nSaved to: {output_path}")
-        print(f"Successfully mapped: {len(paddock_soils)} paddocks")
-        if errors:
-            print(f"Errors: {len(errors)}")
+    log(f"\nSaved to: {output_path}")
+    log(f"Successfully mapped: {len(paddock_soils)} paddocks")
+    if errors:
+        log(f"Errors: {len(errors)}")
 
     return paddock_soils
