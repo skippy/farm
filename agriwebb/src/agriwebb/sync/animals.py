@@ -126,7 +126,7 @@ async def fetch_animal_records(animal_id: str, max_retries: int = 3) -> list[dic
     """Fetch all records for a specific animal using direct records query.
 
     Includes: weights, scores, location changes, pregnancy scans, treatments,
-    feed records, births, lactation records, and joining records.
+    and feed records.
     """
     farm_id = settings.agriwebb_farm_id
 
@@ -162,29 +162,6 @@ async def fetch_animal_records(animal_id: str, max_retries: int = 3) -> list[dic
         }}
         ... on FeedRecord {{
           sessionId
-        }}
-        ... on BirthRecord {{
-          birthId
-          birthType
-          assistanceRequired
-          offspringCount
-        }}
-        ... on JoiningRecord {{
-          joiningId
-          sireAnimalId
-          joiningStartDate
-          joiningEndDate
-        }}
-        ... on LactationRecord {{
-          lactationStatus
-          milkYield {{ value unit }}
-        }}
-        ... on DryOffRecord {{
-          reason
-        }}
-        ... on WeaningRecord {{
-          weaningType
-          weaningWeight {{ value unit }}
         }}
       }}
     }}
