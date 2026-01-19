@@ -6,7 +6,7 @@ from datetime import date
 import httpx
 import pytest
 
-from agriwebb.core.client import GraphQLError
+from agriwebb.core.client import AgriWebbAPIError
 from agriwebb.weather import api as weather_api
 from agriwebb.weather import ncei as weather
 
@@ -265,7 +265,7 @@ class TestGetRainfalls:
         """Verify error raised on GraphQL errors."""
         mock_agriwebb.post("/v2").mock(return_value=httpx.Response(200, json={"errors": [{"message": "Unauthorized"}]}))
 
-        with pytest.raises(GraphQLError, match="Unauthorized"):
+        with pytest.raises(AgriWebbAPIError, match="Unauthorized"):
             await weather_api.get_rainfalls()
 
     async def test_sends_sensor_filter(self, mock_agriwebb):

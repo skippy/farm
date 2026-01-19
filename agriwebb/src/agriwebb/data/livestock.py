@@ -16,24 +16,11 @@ from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
-import httpx
-from tenacity import (
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_exponential_jitter,
+from agriwebb.core import (
+    get_cache_dir,
+    graphql_with_retry,
+    settings,
 )
-
-from agriwebb.core import GraphQLError, get_cache_dir, graphql, settings
-
-
-# 500 errors should NOT be retried - they indicate server overload
-# Only retry on timeouts/connection errors
-class RetryableError(Exception):
-    """Transient error that should be retried (timeouts, connection errors)."""
-
-    pass
-
 
 # =============================================================================
 # Configuration Constants
@@ -51,13 +38,7 @@ MAX_CONCURRENT_REQUESTS = 5
 # Small delay between paginated requests (seconds)
 PAGINATION_DELAY = 0.1
 
-# Retry configuration
-MAX_RETRIES = 3  # Reduced - fail faster on persistent errors
-MIN_WAIT_SECONDS = 1
-MAX_WAIT_SECONDS = 10
-
 # Circuit breaker - stop everything after too many consecutive failures
-# Now that we don't retry 500 errors, we can use a lower threshold
 MAX_CONSECUTIVE_FAILURES = 5
 
 # =============================================================================
@@ -246,12 +227,6 @@ query GetFields($farmId: String) {
 # =============================================================================
 
 
-class AgriWebbAPIError(Exception):
-    """Raised when AgriWebb API returns an error."""
-
-    pass
-
-
 class CircuitBreakerOpen(Exception):
     """Raised when too many consecutive failures have occurred."""
 
@@ -285,48 +260,6 @@ class CircuitBreaker:
                 f"Stopping after {self.consecutive_failures} consecutive API failures. "
                 "The AgriWebb API may be overloaded. Try again later."
             )
-
-
-# =============================================================================
-# GraphQL Helpers with Retry
-# =============================================================================
-
-
-@retry(
-    retry=retry_if_exception_type(RetryableError),
-    stop=stop_after_attempt(MAX_RETRIES),
-    wait=wait_exponential_jitter(initial=MIN_WAIT_SECONDS, max=MAX_WAIT_SECONDS, jitter=2),
-    reraise=True,
-)
-async def _graphql_with_retry(query: str, variables: dict | None = None) -> dict:
-    """Execute a GraphQL query with exponential backoff + jitter on errors.
-
-    Retries on:
-    - Timeouts
-    - Connection errors
-    - HTTP 5xx errors (server overload)
-    - GraphQL errors with "Internal Server Error"
-
-    After MAX_RETRIES failures, raises AgriWebbAPIError.
-    """
-    try:
-        return await graphql(query, variables)
-    except httpx.TimeoutException as e:
-        raise RetryableError(f"Request timed out: {e}") from e
-    except httpx.ConnectError as e:
-        raise RetryableError(f"Connection failed: {e}") from e
-    except httpx.HTTPStatusError as e:
-        if e.response.status_code >= 500:
-            # Server error - retry with backoff
-            raise RetryableError(f"HTTP {e.response.status_code}") from e
-        # Client error (4xx) - don't retry
-        raise AgriWebbAPIError(f"HTTP {e.response.status_code}: {e}") from e
-    except GraphQLError as e:
-        # Check if this is a server error we should retry
-        if any("Internal Server Error" in err.get("message", "") for err in e.errors):
-            raise RetryableError(f"GraphQL server error: {e}") from e
-        # Non-retryable GraphQL error
-        raise AgriWebbAPIError(f"GraphQL error: {e}") from e
 
 
 # =============================================================================
@@ -436,7 +369,7 @@ async def find_animal(identifier: str) -> dict:
       }}
     }}
     """
-    result = await graphql(query)
+    result = await graphql_with_retry(query)
 
     animals = result.get("data", {}).get("animals", [])
 
@@ -456,7 +389,7 @@ async def find_animal(identifier: str) -> dict:
       }}
     }}
     """
-    result = await graphql(query)
+    result = await graphql_with_retry(query)
 
     animals = result.get("data", {}).get("animals", [])
 
@@ -482,7 +415,7 @@ async def find_animal(identifier: str) -> dict:
       }}
     }}
     """
-    result = await graphql(query)
+    result = await graphql_with_retry(query)
 
     animals = result.get("data", {}).get("animals", [])
 
@@ -508,7 +441,7 @@ async def find_animal(identifier: str) -> dict:
       }}
     }}
     """
-    result = await graphql(query)
+    result = await graphql_with_retry(query)
 
     animals = result.get("data", {}).get("animals", [])
 
@@ -579,7 +512,7 @@ async def get_animals(
       }}
     }}
     """
-    result = await graphql(query)
+    result = await graphql_with_retry(query)
 
     animals = result.get("data", {}).get("animals", [])
     return [_normalize_animal(a) for a in animals]
@@ -670,7 +603,7 @@ async def get_offspring(identifier: str) -> list[dict]:
       }}
     }}
     """
-    result = await graphql(query)
+    result = await graphql_with_retry(query)
 
     all_animals = result.get("data", {}).get("animals", [])
 
@@ -711,7 +644,7 @@ async def get_mobs() -> list[dict]:
       }}
     }}
     """
-    result = await graphql(query)
+    result = await graphql_with_retry(query)
 
     groups = result.get("data", {}).get("managementGroups", [])
     return [
@@ -761,7 +694,7 @@ async def get_weights(
       }}
     }}
     """
-    result = await graphql(query)
+    result = await graphql_with_retry(query)
 
     return result.get("data", {}).get("weightRecords", [])
 
@@ -801,7 +734,7 @@ async def get_treatments(
       }}
     }}
     """
-    result = await graphql(query)
+    result = await graphql_with_retry(query)
 
     return result.get("data", {}).get("treatmentRecords", [])
 
@@ -837,7 +770,7 @@ async def get_pregnancies(animal_id: str | None = None) -> list[dict]:
       }}
     }}
     """
-    result = await graphql(query)
+    result = await graphql_with_retry(query)
 
     return result.get("data", {}).get("pregnancyRecords", [])
 
@@ -870,7 +803,7 @@ async def _fetch_all_animals_for_cache(
 
     while True:
         variables = {"farmId": farm_id, "limit": page_size, "skip": skip}
-        result = await _graphql_with_retry(ANIMALS_QUERY, variables)
+        result = await graphql_with_retry(ANIMALS_QUERY, variables)
         animals = result.get("data", {}).get("animals", [])
         all_animals.extend(animals)
 
@@ -917,7 +850,7 @@ async def _fetch_animal_records(animal_id: str, page_size: int = 100) -> list[di
             "limit": page_size,
             "skip": skip,
         }
-        result = await _graphql_with_retry(RECORDS_QUERY_FULL, variables)
+        result = await graphql_with_retry(RECORDS_QUERY_FULL, variables)
         records = result.get("data", {}).get("records", [])
         all_records.extend(records)
 
@@ -948,7 +881,7 @@ async def _fetch_fields_for_cache(
     if on_progress:
         on_progress("Fetching fields/paddocks...")
     try:
-        result = await _graphql_with_retry(CACHE_FIELDS_QUERY, variables)
+        result = await graphql_with_retry(CACHE_FIELDS_QUERY, variables)
     except Exception as e:
         if on_progress:
             on_progress(f"  Warning: Could not fetch fields: {e}")
