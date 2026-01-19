@@ -125,12 +125,13 @@ async def fetch_all_animals(page_size: int = 200) -> list[dict]:
 async def fetch_animal_records(animal_id: str, max_retries: int = 3) -> list[dict]:
     """Fetch all records for a specific animal.
 
-    Record types supported by AgriWebb API:
-    - weigh: Weight measurements
-    - score: Body condition scores
-    - locationChanged: Paddock movements
-    - animalTreatment: Health treatments
-    - feed: Feed records
+    Record types in AgriWebb API (from schema introspection):
+    - WeighRecord: weight measurements
+    - ScoreRecord: body condition scores
+    - LocationChangedRecord: paddock movements
+    - PregnancyScanRecord: pregnancy scans
+    - AnimalTreatmentRecord: health treatments
+    - FeedRecord: feed records
     """
     farm_id = settings.agriwebb_farm_id
 
@@ -146,12 +147,17 @@ async def fetch_animal_records(animal_id: str, max_retries: int = 3) -> list[dic
         observationDate
         ... on WeighRecord {{
           weight {{ value unit }}
+          weighEvent
         }}
         ... on ScoreRecord {{
           score {{ value }}
         }}
         ... on LocationChangedRecord {{
           locationId
+        }}
+        ... on PregnancyScanRecord {{
+          fetusCount
+          fetalAge
         }}
         ... on AnimalTreatmentRecord {{
           treatments {{
@@ -161,7 +167,10 @@ async def fetch_animal_records(animal_id: str, max_retries: int = 3) -> list[dic
           }}
         }}
         ... on FeedRecord {{
-          sessionId
+          feeds {{
+            feedType
+            amount {{ value unit }}
+          }}
         }}
       }}
     }}
