@@ -6,7 +6,6 @@ import respx
 
 from agriwebb.core import client
 
-
 # --- Fixtures ---
 
 
@@ -503,7 +502,7 @@ class TestBirthDateParsing:
 
     def test_parse_timestamp_milliseconds(self):
         """Verify millisecond timestamp parsing."""
-        from datetime import datetime, UTC
+        from datetime import UTC, datetime
 
         birth_date = 1709251200000  # 2024-03-01 00:00:00 UTC
 

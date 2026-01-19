@@ -14,9 +14,9 @@ import asyncio
 import json
 from collections import defaultdict
 from datetime import datetime, timedelta
-from pathlib import Path
 
-from agriwebb.livestock import get_animals, get_offspring
+from agriwebb.livestock import get_animals
+
 from agriwebb.client import graphql
 from agriwebb.config import settings
 from agriwebb.core import get_cache_dir
@@ -195,7 +195,7 @@ def calculate_annual_lactation_adjustment(monthly_counts: dict, total_ewes: int)
     annual_adjustments = {}
 
     # Group by year
-    years = set(k[:4] for k in monthly_counts.keys())
+    years = set(k[:4] for k in monthly_counts)
 
     for year in sorted(years):
         year_months = {k: v for k, v in monthly_counts.items() if k.startswith(year)}

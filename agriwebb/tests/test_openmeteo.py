@@ -1,19 +1,19 @@
 """Tests for Open-Meteo weather API integration."""
 
+from datetime import date
+
 import pytest
 import respx
 from httpx import Response
-from datetime import date, timedelta
-import json
 
 from agriwebb.weather.openmeteo import (
-    HISTORICAL_API,
-    FORECAST_API,
     DEFAULT_LAT,
     DEFAULT_LON,
-    fetch_historical,
-    fetch_forecast,
+    FORECAST_API,
+    HISTORICAL_API,
     fetch_current_conditions,
+    fetch_forecast,
+    fetch_historical,
     update_weather_cache,
 )
 

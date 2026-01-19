@@ -17,8 +17,20 @@ def _to_timestamp_ms(d: str | date) -> int:
     return int(dt.timestamp() * 1000)
 
 
-async def graphql(query: str) -> dict:
-    """Execute a GraphQL query/mutation against AgriWebb."""
+async def graphql(query: str, variables: dict | None = None) -> dict:
+    """Execute a GraphQL query/mutation against AgriWebb.
+
+    Args:
+        query: GraphQL query or mutation string
+        variables: Optional dictionary of GraphQL variables
+
+    Returns:
+        Parsed JSON response from the API
+    """
+    payload = {"query": query}
+    if variables:
+        payload["variables"] = variables
+
     async with httpx.AsyncClient() as client:
         response = await client.post(
             API_URL,
@@ -26,7 +38,7 @@ async def graphql(query: str) -> dict:
                 "x-api-key": settings.agriwebb_api_key,
                 "Content-Type": "application/json",
             },
-            json={"query": query},
+            json=payload,
             timeout=30,
         )
         if response.status_code >= 400:

@@ -1,15 +1,15 @@
 """Tests for historical growth analysis."""
 
+
 import pytest
-from datetime import date
 
 from agriwebb.data.historical import (
     calculate_historical_growth,
-    get_monthly_averages,
-    get_yearly_by_month,
     compare_to_historical,
+    get_monthly_averages,
     get_seasonal_summary,
     get_trend_analysis,
+    get_yearly_by_month,
 )
 
 

@@ -1,20 +1,21 @@
 """Tests for grazing consumption model."""
 
-import pytest
 from datetime import date, datetime, timedelta
 
+import pytest
+
 from agriwebb.data.grazing import (
+    BASE_INTAKE_PCT,
+    DEFAULT_WEANING_DAYS,
     # Constants
     DEFAULT_WEIGHTS,
-    BASE_INTAKE_PCT,
     LACTATION_MULTIPLIERS,
-    DEFAULT_WEANING_DAYS,
+    calculate_animal_intake,
+    calculate_paddock_consumption,
+    find_nursing_lambs,
     # Functions
     get_latest_weight,
     get_wean_date,
-    find_nursing_lambs,
-    calculate_animal_intake,
-    calculate_paddock_consumption,
 )
 
 

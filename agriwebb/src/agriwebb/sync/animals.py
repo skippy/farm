@@ -38,6 +38,149 @@ MAX_RETRIES = 5
 MIN_WAIT_SECONDS = 1
 MAX_WAIT_SECONDS = 30
 
+# =============================================================================
+# GraphQL Queries (using variables for cleaner, more efficient queries)
+# =============================================================================
+
+ANIMALS_QUERY = """
+query GetAnimals($farmId: ID!, $limit: Int!, $skip: Int!) {
+  animals(farmId: $farmId, limit: $limit, skip: $skip) {
+    animalId
+    farmId
+    identity {
+      name
+      eid
+      vid
+      managementTag
+      brand
+      tattoo
+    }
+    characteristics {
+      birthDate
+      birthYear
+      birthDateAccuracy
+      breedAssessed
+      sex
+      speciesCommonName
+      visualColor
+      ageClass
+    }
+    state {
+      onFarm
+      onFarmDate
+      offFarmDate
+      currentLocationId
+      fate
+      disposalMethod
+      reproductiveStatus
+      fertilityStatus
+      offspringCount
+      weaned
+      lastSeen
+      daysReared
+    }
+    parentage {
+      sires {
+        parentAnimalId
+        parentAnimalIdentity { name vid eid }
+        parentType
+      }
+      dams {
+        parentAnimalId
+        parentAnimalIdentity { name vid eid }
+        parentType
+      }
+      surrogate {
+        parentAnimalId
+        parentAnimalIdentity { name vid eid }
+        parentType
+      }
+    }
+    managementGroupId
+    managementGroup {
+      managementGroupId
+      name
+      species
+    }
+  }
+}
+"""
+
+# Full records query with all record types including complex nested fragments
+RECORDS_QUERY_FULL = """
+query GetRecords($farmId: ID!, $animalId: ID!, $limit: Int!) {
+  records(options: {farmId: $farmId, animalId: $animalId, limit: $limit}) {
+    recordId
+    recordType
+    observationDate
+    ... on WeighRecord {
+      weight { value unit }
+      weighEvent
+    }
+    ... on ScoreRecord {
+      score { value }
+    }
+    ... on LocationChangedRecord {
+      locationId
+    }
+    ... on PregnancyScanRecord {
+      fetusCount
+      fetalAge
+    }
+    ... on AnimalTreatmentRecord {
+      treatments {
+        healthProduct
+        reasonForTreatment
+        totalApplied { value unit }
+      }
+    }
+    ... on FeedRecord {
+      feeds {
+        feedType
+        amount { value unit }
+      }
+    }
+  }
+}
+"""
+
+# Simplified records query without complex nested fragments (fallback)
+RECORDS_QUERY_SIMPLE = """
+query GetRecords($farmId: ID!, $animalId: ID!, $limit: Int!) {
+  records(options: {farmId: $farmId, animalId: $animalId, limit: $limit}) {
+    recordId
+    recordType
+    observationDate
+    ... on WeighRecord {
+      weight { value unit }
+      weighEvent
+    }
+    ... on ScoreRecord {
+      score { value }
+    }
+    ... on LocationChangedRecord {
+      locationId
+    }
+    ... on PregnancyScanRecord {
+      fetusCount
+      fetalAge
+    }
+  }
+}
+"""
+
+FIELDS_QUERY = """
+query GetFields($farmId: ID!) {
+  fields(filter: {farmId: {_eq: $farmId}}) {
+    id
+    name
+    totalArea
+    grazableArea
+    landUse
+  }
+}
+"""
+
 
 class AgriWebbAPIError(Exception):
     """Raised when AgriWebb API returns an error."""
@@ -51,9 +194,9 @@ class AgriWebbAPIError(Exception):
     wait=wait_exponential_jitter(initial=MIN_WAIT_SECONDS, max=MAX_WAIT_SECONDS),
     reraise=True,
 )
-async def _graphql_with_retry(query: str) -> dict:
+async def _graphql_with_retry(query: str, variables: dict | None = None) -> dict:
     """Execute a GraphQL query with exponential backoff retry on server errors."""
-    result = await graphql(query)
+    result = await graphql(query, variables)
 
     if "errors" in result:
         errors = result["errors"]
@@ -84,71 +227,8 @@ async def fetch_all_animals(page_size: int = 200) -> list[dict]:
     print("Fetching animals from AgriWebb...")
 
     while True:
-        query = f"""
-        {{
-          animals(farmId: "{farm_id}", limit: {page_size}, skip: {skip}) {{
-            animalId
-            farmId
-            identity {{
-              name
-              eid
-              vid
-              managementTag
-              brand
-              tattoo
-            }}
-            characteristics {{
-              birthDate
-              birthYear
-              birthDateAccuracy
-              breedAssessed
-              sex
-              speciesCommonName
-              visualColor
-              ageClass
-            }}
-            state {{
-              onFarm
-              onFarmDate
-              offFarmDate
-              currentLocationId
-              fate
-              disposalMethod
-              reproductiveStatus
-              fertilityStatus
-              offspringCount
-              weaned
-              lastSeen
-              daysReared
-            }}
-            parentage {{
-              sires {{
-                parentAnimalId
-                parentAnimalIdentity {{ name vid eid }}
-                parentType
-              }}
-              dams {{
-                parentAnimalId
-                parentAnimalIdentity {{ name vid eid }}
-                parentType
-              }}
-              surrogate {{
-                parentAnimalId
-                parentAnimalIdentity {{ name vid eid }}
-                parentType
-              }}
-            }}
-            managementGroupId
-            managementGroup {{
-              managementGroupId
-              name
-              species
-            }}
-          }}
-        }}
-        """
-
-        result = await _graphql_with_retry(query)
+        variables = {"farmId": farm_id, "limit": page_size, "skip": skip}
+        result = await _graphql_with_retry(ANIMALS_QUERY, variables)
         animals = result.get("data", {}).get("animals", [])
         all_animals.extend(animals)
 
@@ -162,63 +242,6 @@ async def fetch_all_animals(page_size: int = 200) -> list[dict]:
 
     print(f"  Found {len(all_animals)} animals total")
     return all_animals
-
-
-def _build_records_query(farm_id: str, animal_id: str, include_complex: bool = True) -> str:
-    """Build the records query with optional complex fragments.
-
-    Args:
-        farm_id: The farm ID
-        animal_id: The animal ID
-        include_complex: If True, include AnimalTreatmentRecord and FeedRecord fragments.
-                        These have nested arrays that can cause 500 errors on some animals.
-    """
-    complex_fragments = ""
-    if include_complex:
-        complex_fragments = """
-        ... on AnimalTreatmentRecord {
-          treatments {
-            healthProduct
-            reasonForTreatment
-            totalApplied { value unit }
-          }
-        }
-        ... on FeedRecord {
-          feeds {
-            feedType
-            amount { value unit }
-          }
-        }
-        """
-
-    return f"""
-    {{
-      records(options: {{
-        farmId: "{farm_id}"
-        animalId: "{animal_id}"
-        limit: 10000
-      }}) {{
-        recordId
-        recordType
-        observationDate
-        ... on WeighRecord {{
-          weight {{ value unit }}
-          weighEvent
-        }}
-        ... on ScoreRecord {{
-          score {{ value }}
-        }}
-        ... on LocationChangedRecord {{
-          locationId
-        }}
-        ... on PregnancyScanRecord {{
-          fetusCount
-          fetalAge
-        }}
-        {complex_fragments}
-      }}
-    }}
-    """
 
 
 async def fetch_animal_records(animal_id: str) -> list[dict]:
@@ -238,11 +261,11 @@ async def fetch_animal_records(animal_id: str) -> list[dict]:
     and feed record details.
     """
     farm_id = settings.agriwebb_farm_id
+    variables = {"farmId": farm_id, "animalId": animal_id, "limit": 10000}
 
     # Try full query first
     try:
-        query = _build_records_query(farm_id, animal_id, include_complex=True)
-        result = await _graphql_with_retry(query)
+        result = await _graphql_with_retry(RECORDS_QUERY_FULL, variables)
         return result.get("data", {}).get("records", [])
     except (AgriWebbAPIError, httpx.HTTPStatusError):
         # Fall back to simpler query without complex nested fragments
@@ -250,8 +273,7 @@ async def fetch_animal_records(animal_id: str) -> list[dict]:
 
     # Fallback: query without complex fragments
     try:
-        query = _build_records_query(farm_id, animal_id, include_complex=False)
-        result = await _graphql_with_retry(query)
+        result = await _graphql_with_retry(RECORDS_QUERY_SIMPLE, variables)
         return result.get("data", {}).get("records", [])
     except (AgriWebbAPIError, httpx.HTTPStatusError) as e:
         raise RuntimeError(f"Failed to fetch records for animal {animal_id} after fallback: {e}") from e
@@ -260,22 +282,11 @@ async def fetch_animal_records(animal_id: str) -> list[dict]:
 async def fetch_fields() -> list[dict]:
     """Fetch all fields/paddocks for location name mapping."""
     farm_id = settings.agriwebb_farm_id
-
-    query = f"""
-    {{
-      fields(filter: {{ farmId: {{ _eq: "{farm_id}" }} }}) {{
-        id
-        name
-        totalArea
-        grazableArea
-        landUse
-      }}
-    }}
-    """
+    variables = {"farmId": farm_id}
 
     print("Fetching fields/paddocks...")
     try:
-        result = await _graphql_with_retry(query)
+        result = await _graphql_with_retry(FIELDS_QUERY, variables)
     except Exception as e:
         print(f"  Warning: Could not fetch fields: {e}")
         return []
