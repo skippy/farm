@@ -16,10 +16,55 @@ from datetime import datetime
 from pathlib import Path
 
 import httpx
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential_jitter,
+)
 
 from agriwebb.core import get_cache_dir, graphql, settings
 
 DEFAULT_CACHE_FILE = "animals.json"
+
+# Concurrency control: max parallel API requests
+MAX_CONCURRENT_REQUESTS = 10
+
+# Small delay between paginated requests (seconds)
+PAGINATION_DELAY = 0.1
+
+# Retry configuration
+MAX_RETRIES = 5
+MIN_WAIT_SECONDS = 1
+MAX_WAIT_SECONDS = 30
+
+
+class AgriWebbAPIError(Exception):
+    """Raised when AgriWebb API returns an error."""
+
+    pass
+
+
+@retry(
+    retry=retry_if_exception_type((httpx.HTTPStatusError, AgriWebbAPIError)),
+    stop=stop_after_attempt(MAX_RETRIES),
+    wait=wait_exponential_jitter(initial=MIN_WAIT_SECONDS, max=MAX_WAIT_SECONDS),
+    reraise=True,
+)
+async def _graphql_with_retry(query: str) -> dict:
+    """Execute a GraphQL query with exponential backoff retry on server errors."""
+    result = await graphql(query)
+
+    if "errors" in result:
+        errors = result["errors"]
+        error_msg = errors[0].get("message", str(errors)) if errors else str(result)
+        # Check if this is a server error we should retry
+        if any("Internal Server Error" in str(e) for e in errors):
+            raise AgriWebbAPIError(f"GraphQL server error: {error_msg}")
+        # Non-retryable error
+        raise ValueError(f"GraphQL error: {error_msg}")
+
+    return result
 
 
 async def fetch_all_animals(page_size: int = 200) -> list[dict]:
@@ -103,11 +148,7 @@ async def fetch_all_animals(page_size: int = 200) -> list[dict]:
         }}
         """
 
-        result = await graphql(query)
-
-        if "errors" in result:
-            raise ValueError(f"GraphQL errors: {result['errors']}")
-
+        result = await _graphql_with_retry(query)
         animals = result.get("data", {}).get("animals", [])
         all_animals.extend(animals)
 
@@ -117,25 +158,40 @@ async def fetch_all_animals(page_size: int = 200) -> list[dict]:
 
         skip += page_size
         print(f"  Fetched {len(all_animals)} animals so far...")
+        await asyncio.sleep(PAGINATION_DELAY)
 
     print(f"  Found {len(all_animals)} animals total")
     return all_animals
 
 
-async def fetch_animal_records(animal_id: str, max_retries: int = 3) -> list[dict]:
-    """Fetch all records for a specific animal.
+def _build_records_query(farm_id: str, animal_id: str, include_complex: bool = True) -> str:
+    """Build the records query with optional complex fragments.
 
-    Record types in AgriWebb API (from schema introspection):
-    - WeighRecord: weight measurements
-    - ScoreRecord: body condition scores
-    - LocationChangedRecord: paddock movements
-    - PregnancyScanRecord: pregnancy scans
-    - AnimalTreatmentRecord: health treatments
-    - FeedRecord: feed records
+    Args:
+        farm_id: The farm ID
+        animal_id: The animal ID
+        include_complex: If True, include AnimalTreatmentRecord and FeedRecord fragments.
+                        These have nested arrays that can cause 500 errors on some animals.
     """
-    farm_id = settings.agriwebb_farm_id
+    complex_fragments = ""
+    if include_complex:
+        complex_fragments = """
+        ... on AnimalTreatmentRecord {
+          treatments {
+            healthProduct
+            reasonForTreatment
+            totalApplied { value unit }
+          }
+        }
+        ... on FeedRecord {
+          feeds {
+            feedType
+            amount { value unit }
+          }
+        }
+        """
 
-    query = f"""
+    return f"""
     {{
       records(options: {{
         farmId: "{farm_id}"
@@ -159,40 +215,46 @@ async def fetch_animal_records(animal_id: str, max_retries: int = 3) -> list[dic
           fetusCount
           fetalAge
         }}
-        ... on AnimalTreatmentRecord {{
-          treatments {{
-            healthProduct
-            reasonForTreatment
-            totalApplied {{ value unit }}
-          }}
-        }}
-        ... on FeedRecord {{
-          feeds {{
-            feedType
-            amount {{ value unit }}
-          }}
-        }}
+        {complex_fragments}
       }}
     }}
     """
 
-    for attempt in range(max_retries):
-        try:
-            result = await graphql(query)
 
-            if "errors" in result:
-                errors = result["errors"]
-                error_msg = errors[0].get("message", str(errors)) if errors else str(result)
-                raise ValueError(f"GraphQL error for animal {animal_id}: {error_msg}")
+async def fetch_animal_records(animal_id: str) -> list[dict]:
+    """Fetch all records for a specific animal with automatic fallback.
 
-            return result.get("data", {}).get("records", [])
-        except httpx.HTTPStatusError as e:
-            if attempt < max_retries - 1:
-                await asyncio.sleep(2 ** attempt)
-            else:
-                raise RuntimeError(f"HTTP error fetching records for {animal_id}: {e}") from e
+    Record types in AgriWebb API (from schema introspection):
+    - WeighRecord: weight measurements
+    - ScoreRecord: body condition scores
+    - LocationChangedRecord: paddock movements
+    - PregnancyScanRecord: pregnancy scans
+    - AnimalTreatmentRecord: health treatments
+    - FeedRecord: feed records
 
-    return []
+    The function first tries to fetch all record types. If AgriWebb's API
+    returns persistent 500 errors (which happens with complex nested fragments
+    for some animals), it falls back to a simpler query without treatment
+    and feed record details.
+    """
+    farm_id = settings.agriwebb_farm_id
+
+    # Try full query first
+    try:
+        query = _build_records_query(farm_id, animal_id, include_complex=True)
+        result = await _graphql_with_retry(query)
+        return result.get("data", {}).get("records", [])
+    except (AgriWebbAPIError, httpx.HTTPStatusError):
+        # Fall back to simpler query without complex nested fragments
+        pass
+
+    # Fallback: query without complex fragments
+    try:
+        query = _build_records_query(farm_id, animal_id, include_complex=False)
+        result = await _graphql_with_retry(query)
+        return result.get("data", {}).get("records", [])
+    except (AgriWebbAPIError, httpx.HTTPStatusError) as e:
+        raise RuntimeError(f"Failed to fetch records for animal {animal_id} after fallback: {e}") from e
 
 
 async def fetch_fields() -> list[dict]:
@@ -212,10 +274,10 @@ async def fetch_fields() -> list[dict]:
     """
 
     print("Fetching fields/paddocks...")
-    result = await graphql(query)
-
-    if "errors" in result:
-        print(f"  Warning: Could not fetch fields: {result['errors']}")
+    try:
+        result = await _graphql_with_retry(query)
+    except Exception as e:
+        print(f"  Warning: Could not fetch fields: {e}")
         return []
 
     fields = result.get("data", {}).get("fields", [])
@@ -246,21 +308,45 @@ async def sync_all(output_path: Path) -> dict:
     groups = list(groups_by_id.values())
     print(f"  Extracted {len(groups)} management groups from animals")
 
-    # Fetch complete records for each animal
+    # Fetch complete records for each animal with concurrency control
     print()
-    print("Fetching complete records for each animal...")
-    total_records = 0
-    for i, animal in enumerate(animals):
-        animal_id = animal["animalId"]
-        records = await fetch_animal_records(animal_id)
-        animal["records"] = records
-        total_records += len(records)
+    print(f"Fetching records for {len(animals)} animals ({MAX_CONCURRENT_REQUESTS} concurrent)...")
 
-        # Progress update every 25 animals
-        if (i + 1) % 25 == 0 or (i + 1) == len(animals):
-            print(f"  Progress: {i + 1}/{len(animals)} animals, {total_records} records")
+    semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
+    progress = {"completed": 0, "records": 0, "errors": 0}
+    progress_lock = asyncio.Lock()
+
+    async def fetch_with_semaphore(animal: dict) -> None:
+        """Fetch records for a single animal with semaphore control."""
+        async with semaphore:
+            animal_id = animal["animalId"]
+            try:
+                records = await fetch_animal_records(animal_id)
+                animal["records"] = records
+                async with progress_lock:
+                    progress["completed"] += 1
+                    progress["records"] += len(records)
+            except RuntimeError as e:
+                animal["records"] = []
+                async with progress_lock:
+                    progress["completed"] += 1
+                    progress["errors"] += 1
+                print(f"  Warning: {e}")
+
+            # Progress update every 25 animals
+            async with progress_lock:
+                if progress["completed"] % 25 == 0 or progress["completed"] == len(animals):
+                    print(f"  Progress: {progress['completed']}/{len(animals)} animals, {progress['records']} records")
+
+    # Run all fetches concurrently with semaphore limiting
+    await asyncio.gather(*[fetch_with_semaphore(animal) for animal in animals])
+
+    total_records = progress["records"]
+    fallback_count = progress["errors"]
 
     print(f"  Total records fetched: {total_records}")
+    if fallback_count > 0:
+        print(f"  Warning: {fallback_count} animals had issues fetching records")
 
     # Build the export
     data = {
