@@ -39,7 +39,7 @@ jobs:
         run: uv sync
 
       - name: Restore data cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: .cache
           key: agriwebb-data-${{ github.run_id }}
