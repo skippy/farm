@@ -12,6 +12,7 @@ Provides functions to fetch and analyze animal data including:
 import asyncio
 import contextlib
 import json
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
@@ -275,7 +276,8 @@ class CircuitBreaker:
             self.consecutive_failures += 1
             if self.consecutive_failures >= self.max_failures:
                 self.is_open = True
-                print(f"\n  CIRCUIT BREAKER: {self.consecutive_failures} consecutive failures - stopping")
+                # Circuit breaker tripped - caller should check is_open
+                pass
 
     async def check(self):
         if self.is_open:
@@ -845,12 +847,16 @@ async def get_pregnancies(animal_id: str | None = None) -> list[dict]:
 # =============================================================================
 
 
-async def _fetch_all_animals_for_cache(page_size: int = 200) -> list[dict]:
+async def _fetch_all_animals_for_cache(
+    page_size: int = 200,
+    on_progress: Callable[[str], None] | None = None,
+) -> list[dict]:
     """
     Fetch all animals with full details using pagination.
 
     Args:
         page_size: Number of animals per page (default 200)
+        on_progress: Optional callback for progress updates, called with (message: str)
 
     Returns:
         List of all animal records
@@ -859,7 +865,8 @@ async def _fetch_all_animals_for_cache(page_size: int = 200) -> list[dict]:
     all_animals = []
     skip = 0
 
-    print("Fetching animals from AgriWebb...")
+    if on_progress:
+        on_progress("Fetching animals from AgriWebb...")
 
     while True:
         variables = {"farmId": farm_id, "limit": page_size, "skip": skip}
@@ -872,10 +879,12 @@ async def _fetch_all_animals_for_cache(page_size: int = 200) -> list[dict]:
             break
 
         skip += page_size
-        print(f"  Fetched {len(all_animals)} animals so far...")
+        if on_progress:
+            on_progress(f"  Fetched {len(all_animals)} animals so far...")
         await asyncio.sleep(PAGINATION_DELAY)
 
-    print(f"  Found {len(all_animals)} animals total")
+    if on_progress:
+        on_progress(f"  Found {len(all_animals)} animals total")
     return all_animals
 
 
@@ -922,24 +931,39 @@ async def _fetch_animal_records(animal_id: str, page_size: int = 100) -> list[di
     return all_records
 
 
-async def _fetch_fields_for_cache() -> list[dict]:
-    """Fetch all fields/paddocks for location name mapping."""
+async def _fetch_fields_for_cache(
+    on_progress: Callable[[str], None] | None = None,
+) -> list[dict]:
+    """Fetch all fields/paddocks for location name mapping.
+
+    Args:
+        on_progress: Optional callback for progress updates, called with (message: str)
+
+    Returns:
+        List of field records
+    """
     farm_id = settings.agriwebb_farm_id
     variables = {"farmId": farm_id}
 
-    print("Fetching fields/paddocks...")
+    if on_progress:
+        on_progress("Fetching fields/paddocks...")
     try:
         result = await _graphql_with_retry(CACHE_FIELDS_QUERY, variables)
     except Exception as e:
-        print(f"  Warning: Could not fetch fields: {e}")
+        if on_progress:
+            on_progress(f"  Warning: Could not fetch fields: {e}")
         return []
 
     fields = result.get("data", {}).get("fields", [])
-    print(f"  Found {len(fields)} fields/paddocks")
+    if on_progress:
+        on_progress(f"  Found {len(fields)} fields/paddocks")
     return fields
 
 
-async def cache_all_animals(output_path: Path) -> dict:
+async def cache_all_animals(
+    output_path: Path,
+    on_progress: Callable[[str], None] | None = None,
+) -> dict:
     """Download all animal data to a local cache file.
 
     This function fetches all animals with their full details and records,
@@ -947,20 +971,26 @@ async def cache_all_animals(output_path: Path) -> dict:
 
     Args:
         output_path: Path to write the cache file
+        on_progress: Optional callback for progress updates, called with (message: str)
 
     Returns:
         The cached data dict
     """
-    print("=" * 60)
-    print("AgriWebb Animal Data Cache")
-    print("=" * 60)
-    print()
+
+    def log(msg: str) -> None:
+        if on_progress:
+            on_progress(msg)
+
+    log("=" * 60)
+    log("AgriWebb Animal Data Cache")
+    log("=" * 60)
+    log("")
 
     # Fetch animals (without embedded records - we'll fetch those separately)
-    animals = await _fetch_all_animals_for_cache()
+    animals = await _fetch_all_animals_for_cache(on_progress=on_progress)
 
     # Fetch fields for location name mapping
-    fields = await _fetch_fields_for_cache()
+    fields = await _fetch_fields_for_cache(on_progress=on_progress)
     field_names = {f["id"]: f["name"] for f in fields}
 
     # Extract management groups from animals (since direct query may lack permissions)
@@ -970,11 +1000,11 @@ async def cache_all_animals(output_path: Path) -> dict:
         if mg and mg.get("managementGroupId"):
             groups_by_id[mg["managementGroupId"]] = mg
     groups = list(groups_by_id.values())
-    print(f"  Extracted {len(groups)} management groups from animals")
+    log(f"  Extracted {len(groups)} management groups from animals")
 
     # Fetch complete records for each animal with concurrency control
-    print()
-    print(f"Fetching records for {len(animals)} animals ({MAX_CONCURRENT_REQUESTS} concurrent)...")
+    log("")
+    log(f"Fetching records for {len(animals)} animals ({MAX_CONCURRENT_REQUESTS} concurrent)...")
 
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
     circuit_breaker = CircuitBreaker()
@@ -1007,14 +1037,14 @@ async def cache_all_animals(output_path: Path) -> dict:
                 async with progress_lock:
                     progress["completed"] += 1
                     progress["errors"] += 1
-                # Only print if circuit breaker hasn't tripped yet
+                # Only log if circuit breaker hasn't tripped yet
                 if not circuit_breaker.is_open:
-                    print(f"  Warning: {e}")
+                    log(f"  Warning: {e}")
 
             # Progress update every 25 animals
             async with progress_lock:
                 if progress["completed"] % 25 == 0 or progress["completed"] == len(animals):
-                    print(f"  Progress: {progress['completed']}/{len(animals)} animals, {progress['records']} records")
+                    log(f"  Progress: {progress['completed']}/{len(animals)} animals, {progress['records']} records")
 
     # Run all fetches concurrently with semaphore limiting
     # Circuit breaker may have stopped some tasks - suppress any exceptions
@@ -1023,15 +1053,15 @@ async def cache_all_animals(output_path: Path) -> dict:
 
     # Check if we stopped due to circuit breaker
     if circuit_breaker.is_open:
-        print("\n  Stopped early due to API errors. Saving partial data...")
-        print(f"  Skipped {progress['skipped']} animals due to circuit breaker")
+        log("\n  Stopped early due to API errors. Saving partial data...")
+        log(f"  Skipped {progress['skipped']} animals due to circuit breaker")
 
     total_records = progress["records"]
     fallback_count = progress["errors"]
 
-    print(f"  Total records fetched: {total_records}")
+    log(f"  Total records fetched: {total_records}")
     if fallback_count > 0:
-        print(f"  Warning: {fallback_count} animals had issues fetching records")
+        log(f"  Warning: {fallback_count} animals had issues fetching records")
 
     # Build the export
     data = {
@@ -1067,17 +1097,17 @@ async def cache_all_animals(output_path: Path) -> dict:
             data["indices"]["by_eid"][identity["eid"]] = i
 
     # Write to file
-    print()
-    print(f"Writing to {output_path}...")
+    log("")
+    log(f"Writing to {output_path}...")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w") as f:
         json.dump(data, f, indent=2, default=str)
 
     size_mb = output_path.stat().st_size / (1024 * 1024)
-    print(f"  Wrote {size_mb:.2f} MB")
-    print()
-    print("Done! You can now analyze the data locally.")
-    print(f"  File: {output_path}")
+    log(f"  Wrote {size_mb:.2f} MB")
+    log("")
+    log("Done! You can now analyze the data locally.")
+    log(f"  File: {output_path}")
 
     return data
 
@@ -1315,7 +1345,7 @@ async def cli_main() -> None:
                 print(f"File: {output_path}")
                 return
 
-        await cache_all_animals(output_path)
+        await cache_all_animals(output_path, on_progress=print)
 
     else:
         parser.print_help()
