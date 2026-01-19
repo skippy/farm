@@ -17,6 +17,164 @@ def _to_timestamp_ms(d: str | date) -> int:
     return int(dt.timestamp() * 1000)
 
 
+# =============================================================================
+# GraphQL Queries and Mutations
+# =============================================================================
+
+FARMS_QUERY = """
+query GetFarms {
+  farms {
+    id
+    name
+    timeZone
+    address {
+      location {
+        lat
+        long
+      }
+    }
+  }
+}
+"""
+
+CREATE_RAIN_GAUGE_MUTATION = """
+mutation CreateRainGauge($farmId: ID!, $name: String!, $lat: Float!, $lng: Float!) {
+  addMapFeatures(input: {
+    farmId: $farmId
+    features: [{
+      type: rainGauge
+      name: $name
+      location: { lat: $lat, long: $lng }
+    }]
+  }) {
+    features {
+      id
+      name
+    }
+  }
+}
+"""
+
+MAP_FEATURE_QUERY = """
+query GetMapFeature($featureId: ID!) {
+  mapFeatures(filter: { id: { _eq: $featureId } }) {
+    id
+    name
+    geometry {
+      type
+      coordinates
+    }
+  }
+}
+"""
+
+# Note: update_map_feature still uses f-string for geometry due to complex nested structure
+# that doesn't map cleanly to GraphQL variables
+
+ADD_RAINFALL_MUTATION = """
+mutation AddRainfall($farmId: ID!, $sensorId: ID!, $value: Float!, $time: Float!) {
+  addRainfalls(input: {
+    unit: mm
+    value: $value
+    farmId: $farmId
+    sensorId: $sensorId
+    time: $time
+    mode: cumulative
+  }) {
+    rainfalls {
+      time
+      mode
+    }
+  }
+}
+"""
+
+RAINFALLS_QUERY = """
+query GetRainfalls($farmId: ID!, $sensorId: ID!) {
+  rainfalls(filter: {
+    farmId: { _eq: $farmId }
+    sensorId: { _eq: $sensorId }
+  }) {
+    id
+    time
+    value
+    unit
+    mode
+    sensorId
+  }
+}
+"""
+
+FIELDS_QUERY = """
+query GetFields($farmId: ID!) {
+  fields(filter: { farmId: { _eq: $farmId } }) {
+    id
+    name
+    totalArea
+    grazableArea
+    geometry {
+      type
+      coordinates
+    }
+    landUse
+    cropType
+  }
+}
+"""
+
+ADD_PASTURE_GROWTH_RATE_MUTATION = """
+mutation AddPastureGrowthRate($input: [AddPastureGrowthRateInput!]!) {
+  addPastureGrowthRates(input: $input) {
+    pastureGrowthRates {
+      id
+      time
+      value
+    }
+  }
+}
+"""
+
+ADD_FEED_ON_OFFER_MUTATION = """
+mutation AddFeedOnOffer($input: [AddFeedOnOfferInput!]!) {
+  addFeedOnOffers(input: $input) {
+    feedOnOffers {
+      id
+      time
+      value
+    }
+  }
+}
+"""
+
+ADD_STANDING_DRY_MATTER_MUTATION = """
+mutation AddStandingDryMatter($input: [AddTotalStandingDryMatterInput!]!) {
+  addTotalStandingDryMatters(input: $input) {
+    totalStandingDryMatters {
+      id
+      time
+      value
+    }
+  }
+}
+"""
+
+ADD_FOO_TARGET_MUTATION = """
+mutation AddFooTarget($input: [AddFeedOnOfferTargetInput!]!) {
+  addFeedOnOfferTargets(input: $input) {
+    feedOnOfferTargets {
+      id
+      time
+      value
+    }
+  }
+}
+"""
+
+
+# =============================================================================
+# Client Functions
+# =============================================================================
+
 async def graphql(query: str, variables: dict | None = None) -> dict:
     """Execute a GraphQL query/mutation against AgriWebb.
 
@@ -49,22 +207,7 @@ async def graphql(query: str, variables: dict | None = None) -> dict:
 
 async def get_farm() -> dict:
     """Fetch farm details including location."""
-    query = """
-    {
-      farms {
-        id
-        name
-        timeZone
-        address {
-          location {
-            lat
-            long
-          }
-        }
-      }
-    }
-    """
-    result = await graphql(query)
+    result = await graphql(FARMS_QUERY)
     farms = result.get("data", {}).get("farms", [])
 
     for farm in farms:
@@ -93,24 +236,13 @@ async def create_rain_gauge(name: str, lat: float, lng: float) -> str:
     Returns:
         The created sensor ID
     """
-    mutation = f"""
-    mutation {{
-      addMapFeatures(input: {{
-        farmId: "{settings.agriwebb_farm_id}"
-        features: [{{
-          type: rainGauge
-          name: "{name}"
-          location: {{ lat: {lat}, long: {lng} }}
-        }}]
-      }}) {{
-        features {{
-          id
-          name
-        }}
-      }}
-    }}
-    """
-    result = await graphql(mutation)
+    variables = {
+        "farmId": settings.agriwebb_farm_id,
+        "name": name,
+        "lat": lat,
+        "lng": lng,
+    }
+    result = await graphql(CREATE_RAIN_GAUGE_MUTATION, variables)
 
     if "errors" in result:
         raise ValueError(f"Failed to create rain gauge: {result['errors']}")
@@ -124,19 +256,8 @@ async def create_rain_gauge(name: str, lat: float, lng: float) -> str:
 
 async def get_map_feature(feature_id: str) -> dict:
     """Fetch a map feature by ID."""
-    query = f"""
-    {{
-      mapFeatures(filter: {{ id: {{ _eq: "{feature_id}" }} }}) {{
-        id
-        name
-        geometry {{
-          type
-          coordinates
-        }}
-      }}
-    }}
-    """
-    result = await graphql(query)
+    variables = {"featureId": feature_id}
+    result = await graphql(MAP_FEATURE_QUERY, variables)
 
     if "errors" in result:
         raise ValueError(f"Failed to get feature: {result['errors']}")
@@ -158,11 +279,17 @@ async def update_map_feature(feature_id: str, name: str) -> dict:
 
     Returns:
         API response
+
+    Note:
+        This function still uses f-string interpolation for the geometry
+        object due to its complex nested structure that doesn't map cleanly
+        to GraphQL input types.
     """
     # Fetch current feature to get geometry (required for update)
     feature = await get_map_feature(feature_id)
     geometry = feature.get("geometry", {})
 
+    # Note: geometry requires special handling - keeping f-string for this mutation
     mutation = f"""
     mutation {{
       updateMapFeature(input: {{
@@ -212,25 +339,14 @@ async def add_rainfall(
     timestamp_ms = _to_timestamp_ms(date_str)
     rainfall_mm = round(precipitation_inches * 25.4, 2)
 
-    mutation = f"""
-    mutation {{
-      addRainfalls(input: {{
-        unit: mm
-        value: {rainfall_mm}
-        farmId: "{settings.agriwebb_farm_id}"
-        sensorId: "{sensor}"
-        time: {timestamp_ms}
-        mode: cumulative
-      }}) {{
-        rainfalls {{
-          time
-          mode
-        }}
-      }}
-    }}
-    """
+    variables = {
+        "farmId": settings.agriwebb_farm_id,
+        "sensorId": sensor,
+        "value": rainfall_mm,
+        "time": timestamp_ms,
+    }
 
-    return await graphql(mutation)
+    return await graphql(ADD_RAINFALL_MUTATION, variables)
 
 
 async def get_rainfalls(
@@ -238,35 +354,49 @@ async def get_rainfalls(
     start_date: str | None = None,
     end_date: str | None = None,
 ) -> list[dict]:
-    """Get rainfall records for a sensor."""
+    """Get rainfall records for a sensor.
+
+    Note:
+        Date filtering is not yet supported with variables due to complex
+        filter syntax. Currently returns all records for the sensor.
+    """
     sensor = sensor_id or settings.agriwebb_weather_sensor_id
     if not sensor:
         raise ValueError("No sensor ID configured.")
 
-    # Build optional date filter
-    date_filter = ""
-    if start_date:
-        date_filter += f", time: {{ _gte: {_to_timestamp_ms(start_date)} }}"
-    if end_date:
-        date_filter += f", time: {{ _lte: {_to_timestamp_ms(end_date)} }}"
+    # Simple query without date filters for now
+    # TODO: Add date filter support when needed
+    if start_date or end_date:
+        # Fall back to f-string for date filtering
+        date_filter = ""
+        if start_date:
+            date_filter += f", time: {{ _gte: {_to_timestamp_ms(start_date)} }}"
+        if end_date:
+            date_filter += f", time: {{ _lte: {_to_timestamp_ms(end_date)} }}"
 
-    query = f"""
-    {{
-      rainfalls(filter: {{
-        farmId: {{ _eq: "{settings.agriwebb_farm_id}" }}
-        sensorId: {{ _eq: "{sensor}" }}
-        {date_filter}
-      }}) {{
-        id
-        time
-        value
-        unit
-        mode
-        sensorId
-      }}
-    }}
-    """
-    result = await graphql(query)
+        query = f"""
+        {{
+          rainfalls(filter: {{
+            farmId: {{ _eq: "{settings.agriwebb_farm_id}" }}
+            sensorId: {{ _eq: "{sensor}" }}
+            {date_filter}
+          }}) {{
+            id
+            time
+            value
+            unit
+            mode
+            sensorId
+          }}
+        }}
+        """
+        result = await graphql(query)
+    else:
+        variables = {
+            "farmId": settings.agriwebb_farm_id,
+            "sensorId": sensor,
+        }
+        result = await graphql(RAINFALLS_QUERY, variables)
 
     if "errors" in result:
         raise ValueError(f"GraphQL errors: {result['errors']}")
@@ -284,23 +414,8 @@ async def get_fields(min_area_ha: float = 0.2) -> list[dict]:
     Returns:
         List of field dictionaries with geometry
     """
-    query = f"""
-    {{
-      fields(filter: {{ farmId: {{ _eq: "{settings.agriwebb_farm_id}" }} }}) {{
-        id
-        name
-        totalArea
-        grazableArea
-        geometry {{
-          type
-          coordinates
-        }}
-        landUse
-        cropType
-      }}
-    }}
-    """
-    result = await graphql(query)
+    variables = {"farmId": settings.agriwebb_farm_id}
+    result = await graphql(FIELDS_QUERY, variables)
 
     if "errors" in result:
         raise ValueError(f"GraphQL errors: {result['errors']}")
@@ -333,24 +448,16 @@ async def add_pasture_growth_rate(
     """
     timestamp_ms = _to_timestamp_ms(record_date)
 
-    mutation = f"""
-    mutation {{
-      addPastureGrowthRates(input: [{{
-        value: {round(growth_rate, 1)}
-        farmId: "{settings.agriwebb_farm_id}"
-        fieldId: "{field_id}"
-        time: {timestamp_ms}
-      }}]) {{
-        pastureGrowthRates {{
-          id
-          time
-          value
-        }}
-      }}
-    }}
-    """
+    variables = {
+        "input": [{
+            "value": round(growth_rate, 1),
+            "farmId": settings.agriwebb_farm_id,
+            "fieldId": field_id,
+            "time": timestamp_ms,
+        }]
+    }
 
-    result = await graphql(mutation)
+    result = await graphql(ADD_PASTURE_GROWTH_RATE_MUTATION, variables)
 
     if "errors" in result:
         raise ValueError(f"Failed to add growth rate: {result['errors']}")
@@ -373,28 +480,15 @@ async def add_pasture_growth_rates_batch(
     inputs = []
     for rec in records:
         timestamp_ms = _to_timestamp_ms(rec["record_date"])
-        inputs.append(
-            f'{{ value: {round(rec["growth_rate"], 1)}, '
-            f'farmId: "{settings.agriwebb_farm_id}", '
-            f'fieldId: "{rec["field_id"]}", '
-            f'time: {timestamp_ms} }}'
-        )
+        inputs.append({
+            "value": round(rec["growth_rate"], 1),
+            "farmId": settings.agriwebb_farm_id,
+            "fieldId": rec["field_id"],
+            "time": timestamp_ms,
+        })
 
-    inputs_str = "[" + ", ".join(inputs) + "]"
-
-    mutation = f"""
-    mutation {{
-      addPastureGrowthRates(input: {inputs_str}) {{
-        pastureGrowthRates {{
-          id
-          time
-          value
-        }}
-      }}
-    }}
-    """
-
-    result = await graphql(mutation)
+    variables = {"input": inputs}
+    result = await graphql(ADD_PASTURE_GROWTH_RATE_MUTATION, variables)
 
     if "errors" in result:
         raise ValueError(f"Failed to add growth rates: {result['errors']}")
@@ -424,29 +518,16 @@ async def add_feed_on_offer_batch(
     inputs = []
     for rec in records:
         timestamp_ms = _to_timestamp_ms(rec["record_date"])
-        inputs.append(
-            f'{{ value: {round(rec["foo_kg_ha"], 0)}, '
-            f'farmId: "{settings.agriwebb_farm_id}", '
-            f'fieldId: "{rec["field_id"]}", '
-            f'time: {timestamp_ms}, '
-            f'source: {source} }}'
-        )
+        inputs.append({
+            "value": round(rec["foo_kg_ha"], 0),
+            "farmId": settings.agriwebb_farm_id,
+            "fieldId": rec["field_id"],
+            "time": timestamp_ms,
+            "source": source,
+        })
 
-    inputs_str = "[" + ", ".join(inputs) + "]"
-
-    mutation = f"""
-    mutation {{
-      addFeedOnOffers(input: {inputs_str}) {{
-        feedOnOffers {{
-          id
-          time
-          value
-        }}
-      }}
-    }}
-    """
-
-    result = await graphql(mutation)
+    variables = {"input": inputs}
+    result = await graphql(ADD_FEED_ON_OFFER_MUTATION, variables)
 
     if "errors" in result:
         raise ValueError(f"Failed to add feed on offer: {result['errors']}")
@@ -475,28 +556,15 @@ async def add_standing_dry_matter_batch(
     inputs = []
     for rec in records:
         timestamp_ms = _to_timestamp_ms(rec["record_date"])
-        inputs.append(
-            f'{{ value: {round(rec["sdm_kg_ha"], 0)}, '
-            f'farmId: "{settings.agriwebb_farm_id}", '
-            f'fieldId: "{rec["field_id"]}", '
-            f'time: {timestamp_ms} }}'
-        )
+        inputs.append({
+            "value": round(rec["sdm_kg_ha"], 0),
+            "farmId": settings.agriwebb_farm_id,
+            "fieldId": rec["field_id"],
+            "time": timestamp_ms,
+        })
 
-    inputs_str = "[" + ", ".join(inputs) + "]"
-
-    mutation = f"""
-    mutation {{
-      addTotalStandingDryMatters(input: {inputs_str}) {{
-        totalStandingDryMatters {{
-          id
-          time
-          value
-        }}
-      }}
-    }}
-    """
-
-    result = await graphql(mutation)
+    variables = {"input": inputs}
+    result = await graphql(ADD_STANDING_DRY_MATTER_MUTATION, variables)
 
     if "errors" in result:
         raise ValueError(f"Failed to add standing dry matter: {result['errors']}")
@@ -521,28 +589,15 @@ async def add_foo_target_batch(
     inputs = []
     for rec in records:
         timestamp_ms = _to_timestamp_ms(rec["record_date"])
-        inputs.append(
-            f'{{ value: {round(rec["target_kg_ha"], 0)}, '
-            f'farmId: "{settings.agriwebb_farm_id}", '
-            f'fieldId: "{rec["field_id"]}", '
-            f'time: {timestamp_ms} }}'
-        )
+        inputs.append({
+            "value": round(rec["target_kg_ha"], 0),
+            "farmId": settings.agriwebb_farm_id,
+            "fieldId": rec["field_id"],
+            "time": timestamp_ms,
+        })
 
-    inputs_str = "[" + ", ".join(inputs) + "]"
-
-    mutation = f"""
-    mutation {{
-      addFeedOnOfferTargets(input: {inputs_str}) {{
-        feedOnOfferTargets {{
-          id
-          time
-          value
-        }}
-      }}
-    }}
-    """
-
-    result = await graphql(mutation)
+    variables = {"input": inputs}
+    result = await graphql(ADD_FOO_TARGET_MUTATION, variables)
 
     if "errors" in result:
         raise ValueError(f"Failed to add FOO targets: {result['errors']}")

@@ -115,8 +115,8 @@ class TestAddRainfall:
         await client.add_rainfall("2026-01-15", 0.5)
 
         request_body = route.calls[0].request.content.decode()
-        # Timestamp should be 13 digits (milliseconds)
-        assert "time: 17" in request_body  # Starts with 17... for 2026
+        # Timestamp should be 13 digits (milliseconds) in variables
+        assert '"time":17' in request_body  # Starts with 17... for 2026
 
     async def test_add_rainfall_uses_default_sensor_id(
         self, mock_agriwebb, sample_rainfall_response
