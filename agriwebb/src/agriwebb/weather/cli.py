@@ -9,6 +9,7 @@ AgriWebb integration and user-facing commands.
 
 import argparse
 import asyncio
+import sys
 from datetime import UTC, date, datetime, timedelta
 
 from agriwebb.core import get_cache_dir, settings
@@ -103,6 +104,9 @@ async def cmd_sync(args: argparse.Namespace) -> None:
             print(f"  Error for {weather['date']}: {e}")
 
     print(f"Completed: {success_count} successful, {error_count} errors")
+
+    if error_count > 0:
+        sys.exit(1)
 
 
 async def cmd_list(args: argparse.Namespace) -> None:

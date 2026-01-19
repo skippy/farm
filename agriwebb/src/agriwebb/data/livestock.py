@@ -23,7 +23,7 @@ from tenacity import (
     wait_exponential_jitter,
 )
 
-from agriwebb.core import get_cache_dir, graphql, settings
+from agriwebb.core import GraphQLError, get_cache_dir, graphql, settings
 
 
 # 500 errors should NOT be retried - they indicate server overload
@@ -308,7 +308,7 @@ async def _graphql_with_retry(query: str, variables: dict | None = None) -> dict
     After MAX_RETRIES failures, raises AgriWebbAPIError.
     """
     try:
-        result = await graphql(query, variables)
+        return await graphql(query, variables)
     except httpx.TimeoutException as e:
         raise RetryableError(f"Request timed out: {e}") from e
     except httpx.ConnectError as e:
@@ -319,17 +319,12 @@ async def _graphql_with_retry(query: str, variables: dict | None = None) -> dict
             raise RetryableError(f"HTTP {e.response.status_code}") from e
         # Client error (4xx) - don't retry
         raise AgriWebbAPIError(f"HTTP {e.response.status_code}: {e}") from e
-
-    if "errors" in result:
-        errors = result["errors"]
-        error_msg = errors[0].get("message", str(errors)) if errors else str(result)
+    except GraphQLError as e:
         # Check if this is a server error we should retry
-        if any("Internal Server Error" in str(e) for e in errors):
-            raise RetryableError(f"GraphQL server error: {error_msg}")
+        if any("Internal Server Error" in err.get("message", "") for err in e.errors):
+            raise RetryableError(f"GraphQL server error: {e}") from e
         # Non-retryable GraphQL error
-        raise AgriWebbAPIError(f"GraphQL error: {error_msg}")
-
-    return result
+        raise AgriWebbAPIError(f"GraphQL error: {e}") from e
 
 
 # =============================================================================
@@ -441,9 +436,6 @@ async def find_animal(identifier: str) -> dict:
     """
     result = await graphql(query)
 
-    if "errors" in result:
-        raise ValueError(f"GraphQL errors: {result['errors']}")
-
     animals = result.get("data", {}).get("animals", [])
 
     if animals:
@@ -463,9 +455,6 @@ async def find_animal(identifier: str) -> dict:
     }}
     """
     result = await graphql(query)
-
-    if "errors" in result:
-        raise ValueError(f"GraphQL errors: {result['errors']}")
 
     animals = result.get("data", {}).get("animals", [])
 
@@ -493,9 +482,6 @@ async def find_animal(identifier: str) -> dict:
     """
     result = await graphql(query)
 
-    if "errors" in result:
-        raise ValueError(f"GraphQL errors: {result['errors']}")
-
     animals = result.get("data", {}).get("animals", [])
 
     if animals:
@@ -521,9 +507,6 @@ async def find_animal(identifier: str) -> dict:
     }}
     """
     result = await graphql(query)
-
-    if "errors" in result:
-        raise ValueError(f"GraphQL errors: {result['errors']}")
 
     animals = result.get("data", {}).get("animals", [])
 
@@ -595,9 +578,6 @@ async def get_animals(
     }}
     """
     result = await graphql(query)
-
-    if "errors" in result:
-        raise ValueError(f"GraphQL errors: {result['errors']}")
 
     animals = result.get("data", {}).get("animals", [])
     return [_normalize_animal(a) for a in animals]
@@ -690,9 +670,6 @@ async def get_offspring(identifier: str) -> list[dict]:
     """
     result = await graphql(query)
 
-    if "errors" in result:
-        raise ValueError(f"GraphQL errors: {result['errors']}")
-
     all_animals = result.get("data", {}).get("animals", [])
 
     # Filter to offspring
@@ -733,9 +710,6 @@ async def get_mobs() -> list[dict]:
     }}
     """
     result = await graphql(query)
-
-    if "errors" in result:
-        raise ValueError(f"GraphQL errors: {result['errors']}")
 
     groups = result.get("data", {}).get("managementGroups", [])
     return [
@@ -787,9 +761,6 @@ async def get_weights(
     """
     result = await graphql(query)
 
-    if "errors" in result:
-        raise ValueError(f"GraphQL errors: {result['errors']}")
-
     return result.get("data", {}).get("weightRecords", [])
 
 
@@ -830,9 +801,6 @@ async def get_treatments(
     """
     result = await graphql(query)
 
-    if "errors" in result:
-        raise ValueError(f"GraphQL errors: {result['errors']}")
-
     return result.get("data", {}).get("treatmentRecords", [])
 
 
@@ -868,9 +836,6 @@ async def get_pregnancies(animal_id: str | None = None) -> list[dict]:
     }}
     """
     result = await graphql(query)
-
-    if "errors" in result:
-        raise ValueError(f"GraphQL errors: {result['errors']}")
 
     return result.get("data", {}).get("pregnancyRecords", [])
 

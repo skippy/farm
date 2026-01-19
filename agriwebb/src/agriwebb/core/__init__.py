@@ -2,6 +2,7 @@
 
 from agriwebb.core import client
 from agriwebb.core.client import (
+    GraphQLError,
     get_farm,
     get_farm_location,
     get_fields,
@@ -16,6 +17,7 @@ __all__ = [
     "settings",
     "get_cache_dir",
     "graphql",
+    "GraphQLError",
     "get_farm",
     "get_farm_location",
     "get_fields",

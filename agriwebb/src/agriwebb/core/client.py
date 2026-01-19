@@ -63,6 +63,16 @@ query GetFields($farmId: ID!) {
 # =============================================================================
 
 
+class GraphQLError(Exception):
+    """Raised when a GraphQL query returns errors."""
+
+    def __init__(self, errors: list[dict], query: str | None = None):
+        self.errors = errors
+        self.query = query
+        messages = [e.get("message", str(e)) for e in errors]
+        super().__init__(f"GraphQL errors: {'; '.join(messages)}")
+
+
 async def graphql(query: str, variables: dict | None = None) -> dict:
     """Execute a GraphQL query/mutation against AgriWebb.
 
@@ -72,6 +82,10 @@ async def graphql(query: str, variables: dict | None = None) -> dict:
 
     Returns:
         Parsed JSON response from the API
+
+    Raises:
+        GraphQLError: If the response contains GraphQL errors
+        httpx.HTTPStatusError: If the HTTP request fails
     """
     payload = {"query": query}
     if variables:
@@ -90,7 +104,13 @@ async def graphql(query: str, variables: dict | None = None) -> dict:
         if response.status_code >= 400:
             print(f"GraphQL error {response.status_code}: {response.text}")
         response.raise_for_status()
-        return response.json()
+
+        result = response.json()
+
+        if "errors" in result:
+            raise GraphQLError(result["errors"], query)
+
+        return result
 
 
 async def get_farm() -> dict:
@@ -116,9 +136,6 @@ async def get_map_feature(feature_id: str) -> dict:
     """Fetch a map feature by ID."""
     variables = {"featureId": feature_id}
     result = await graphql(MAP_FEATURE_QUERY, variables)
-
-    if "errors" in result:
-        raise ValueError(f"Failed to get feature: {result['errors']}")
 
     features = result.get("data", {}).get("mapFeatures", [])
     if not features:
@@ -166,12 +183,7 @@ async def update_map_feature(feature_id: str, name: str) -> dict:
       }}
     }}
     """
-    result = await graphql(mutation)
-
-    if "errors" in result:
-        raise ValueError(f"Failed to update feature: {result['errors']}")
-
-    return result
+    return await graphql(mutation)
 
 
 async def get_fields(min_area_ha: float = 0.2) -> list[dict]:
@@ -186,9 +198,6 @@ async def get_fields(min_area_ha: float = 0.2) -> list[dict]:
     """
     variables = {"farmId": settings.agriwebb_farm_id}
     result = await graphql(FIELDS_QUERY, variables)
-
-    if "errors" in result:
-        raise ValueError(f"GraphQL errors: {result['errors']}")
 
     fields = result.get("data", {}).get("fields", [])
 
