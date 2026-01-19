@@ -838,12 +838,13 @@ async def cli_main() -> None:
 
         refresh = getattr(args, 'refresh', False)
 
-        # Smart caching: skip if cache is < 1 hour old (unless --refresh)
+        # Smart caching: skip if cache is < 1 day old (unless --refresh)
         if not refresh and output_path.exists():
             mtime = datetime.fromtimestamp(output_path.stat().st_mtime)
             age = datetime.now() - mtime
-            if age < timedelta(hours=1):
-                print(f"Cache is fresh ({int(age.total_seconds() / 60)} minutes old)")
+            if age < timedelta(days=1):
+                hours_old = int(age.total_seconds() / 3600)
+                print(f"Cache is fresh ({hours_old} hours old)")
                 print("Use --refresh to force re-download")
                 print(f"File: {output_path}")
                 return
