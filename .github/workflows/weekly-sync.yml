@@ -48,6 +48,7 @@ jobs:
 
       - name: Cache animal data from AgriWebb
         env:
+          NCEI_STATION_ID: ${{ secrets.NCEI_STATION_ID }}
           AGRIWEBB_API_KEY: ${{ secrets.AGRIWEBB_API_KEY }}
           AGRIWEBB_FARM_ID: ${{ secrets.AGRIWEBB_FARM_ID }}
         run: |
