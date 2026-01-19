@@ -13,6 +13,9 @@ import json
 
 from agriwebb.core import graphql, settings
 
+# Cache freshness threshold - skip re-fetch if cache is younger than this
+CACHE_FRESHNESS_HOURS = 24
+
 # Common field fragments for reuse
 ANIMAL_IDENTITY_FIELDS = """
     identity {
@@ -838,12 +841,13 @@ async def cli_main() -> None:
 
         refresh = getattr(args, 'refresh', False)
 
-        # Smart caching: skip if cache is < 1 hour old (unless --refresh)
+        # Smart caching: skip if cache is fresh (unless --refresh)
         if not refresh and output_path.exists():
             mtime = datetime.fromtimestamp(output_path.stat().st_mtime)
             age = datetime.now() - mtime
-            if age < timedelta(hours=1):
-                print(f"Cache is fresh ({int(age.total_seconds() / 60)} minutes old)")
+            if age < timedelta(hours=CACHE_FRESHNESS_HOURS):
+                hours_old = int(age.total_seconds() / 3600)
+                print(f"Cache is fresh ({hours_old} hours old, threshold: {CACHE_FRESHNESS_HOURS}h)")
                 print("Use --refresh to force re-download")
                 print(f"File: {output_path}")
                 return

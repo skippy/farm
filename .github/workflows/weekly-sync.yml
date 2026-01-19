@@ -53,7 +53,7 @@ jobs:
           AGRIWEBB_FARM_ID: ${{ secrets.AGRIWEBB_FARM_ID }}
         run: |
           mkdir -p .cache
-          uv run agriwebb-livestock cache
+          uv run agriwebb-livestock cache --refresh
 
       - name: Set up Google Earth Engine credentials
         env:
