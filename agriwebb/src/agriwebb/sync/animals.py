@@ -123,10 +123,14 @@ async def fetch_all_animals(page_size: int = 200) -> list[dict]:
 
 
 async def fetch_animal_records(animal_id: str, max_retries: int = 3) -> list[dict]:
-    """Fetch all records for a specific animal using direct records query.
+    """Fetch all records for a specific animal.
 
-    Includes: weights, scores, location changes, pregnancy scans, treatments,
-    and feed records.
+    Record types supported by AgriWebb API:
+    - weigh: Weight measurements
+    - score: Body condition scores
+    - locationChanged: Paddock movements
+    - animalTreatment: Health treatments
+    - feed: Feed records
     """
     farm_id = settings.agriwebb_farm_id
 
@@ -149,10 +153,6 @@ async def fetch_animal_records(animal_id: str, max_retries: int = 3) -> list[dic
         ... on LocationChangedRecord {{
           locationId
         }}
-        ... on PregnancyScanRecord {{
-          fetusCount
-          fetalAge
-        }}
         ... on AnimalTreatmentRecord {{
           treatments {{
             healthProduct
@@ -172,17 +172,16 @@ async def fetch_animal_records(animal_id: str, max_retries: int = 3) -> list[dic
             result = await graphql(query)
 
             if "errors" in result:
-                # Don't fail on individual animal errors, just return empty
-                return []
+                errors = result["errors"]
+                error_msg = errors[0].get("message", str(errors)) if errors else str(result)
+                raise ValueError(f"GraphQL error for animal {animal_id}: {error_msg}")
 
             return result.get("data", {}).get("records", [])
         except httpx.HTTPStatusError as e:
             if attempt < max_retries - 1:
-                # Wait before retry (exponential backoff)
                 await asyncio.sleep(2 ** attempt)
             else:
-                print(f"    Warning: Failed to fetch records for {animal_id}: {e}")
-                return []
+                raise RuntimeError(f"HTTP error fetching records for {animal_id}: {e}") from e
 
     return []
 
