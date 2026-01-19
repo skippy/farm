@@ -5,6 +5,7 @@ import pytest
 import respx
 
 from agriwebb.core import client
+from agriwebb.core.client import GraphQLError
 
 # --- Fixtures ---
 
@@ -292,7 +293,7 @@ class TestGetFields:
         """Verify error raised on GraphQL errors."""
         mock_agriwebb.post("/v2").mock(return_value=httpx.Response(200, json={"errors": [{"message": "Unauthorized"}]}))
 
-        with pytest.raises(ValueError, match="GraphQL errors"):
+        with pytest.raises(GraphQLError, match="Unauthorized"):
             await client.get_fields()
 
 

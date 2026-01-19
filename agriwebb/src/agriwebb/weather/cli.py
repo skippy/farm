@@ -86,23 +86,10 @@ async def cmd_sync(args: argparse.Namespace) -> None:
 
     # Push to AgriWebb
     print("\nPushing to AgriWebb...")
-    success_count = 0
-    error_count = 0
-
     for weather in all_weather:
-        try:
-            response = await weather_api.add_rainfall(weather["date"], weather["precipitation_inches"])
+        await weather_api.add_rainfall(weather["date"], weather["precipitation_inches"])
 
-            if "errors" in response:
-                error_count += 1
-            else:
-                success_count += 1
-
-        except Exception as e:
-            error_count += 1
-            print(f"  Error for {weather['date']}: {e}")
-
-    print(f"Completed: {success_count} successful, {error_count} errors")
+    print(f"Completed: {len(all_weather)} records synced")
 
 
 async def cmd_list(args: argparse.Namespace) -> None:

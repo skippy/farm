@@ -3,6 +3,7 @@
 import httpx
 import pytest
 
+from agriwebb.core.client import GraphQLError
 from agriwebb.data import livestock
 
 
@@ -97,7 +98,7 @@ class TestGetAnimals:
         """Verify error raised on GraphQL errors."""
         mock_agriwebb.post("/v2").mock(return_value=httpx.Response(200, json={"errors": [{"message": "Failed"}]}))
 
-        with pytest.raises(ValueError, match="GraphQL errors"):
+        with pytest.raises(GraphQLError, match="Failed"):
             await livestock.get_animals()
 
 

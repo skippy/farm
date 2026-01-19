@@ -27,7 +27,7 @@ mutation CreateRainGauge($farmId: ID!, $name: String!, $lat: Float!, $lng: Float
 """
 
 ADD_RAINFALL_MUTATION = """
-mutation AddRainfall($farmId: ID!, $sensorId: ID!, $value: Float!, $time: Float!) {
+mutation AddRainfall($farmId: String!, $sensorId: String!, $value: Float!, $time: Timestamp!) {
   addRainfalls(input: {
     unit: mm
     value: $value
@@ -95,9 +95,6 @@ async def create_rain_gauge(name: str, lat: float, lng: float) -> str:
         "lng": lng,
     }
     result = await graphql(CREATE_RAIN_GAUGE_MUTATION, variables)
-
-    if "errors" in result:
-        raise ValueError(f"Failed to create rain gauge: {result['errors']}")
 
     features = result.get("data", {}).get("addMapFeatures", {}).get("features", [])
     if not features:
@@ -191,8 +188,5 @@ async def get_rainfalls(
             "sensorId": sensor,
         }
         result = await graphql(RAINFALLS_QUERY, variables)
-
-    if "errors" in result:
-        raise ValueError(f"GraphQL errors: {result['errors']}")
 
     return result.get("data", {}).get("rainfalls", [])

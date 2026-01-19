@@ -85,12 +85,7 @@ async def add_pasture_growth_rates_batch(
         )
 
     variables = {"input": inputs}
-    result = await graphql(ADD_PASTURE_GROWTH_RATE_MUTATION, variables)
-
-    if "errors" in result:
-        raise ValueError(f"Failed to add growth rates: {result['errors']}")
-
-    return result
+    return await graphql(ADD_PASTURE_GROWTH_RATE_MUTATION, variables)
 
 
 async def add_feed_on_offer_batch(
@@ -128,12 +123,7 @@ async def add_feed_on_offer_batch(
         )
 
     variables = {"input": inputs}
-    result = await graphql(ADD_FEED_ON_OFFER_MUTATION, variables)
-
-    if "errors" in result:
-        raise ValueError(f"Failed to add feed on offer: {result['errors']}")
-
-    return result
+    return await graphql(ADD_FEED_ON_OFFER_MUTATION, variables)
 
 
 async def add_standing_dry_matter_batch(
@@ -169,9 +159,4 @@ async def add_standing_dry_matter_batch(
         )
 
     variables = {"input": inputs}
-    result = await graphql(ADD_STANDING_DRY_MATTER_MUTATION, variables)
-
-    if "errors" in result:
-        raise ValueError(f"Failed to add standing dry matter: {result['errors']}")
-
-    return result
+    return await graphql(ADD_STANDING_DRY_MATTER_MUTATION, variables)
