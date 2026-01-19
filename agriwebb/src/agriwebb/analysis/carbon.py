@@ -53,6 +53,7 @@ CH4_GWP = 28  # Global Warming Potential of CH4 (100-year, AR5)
 # Based on IPCC Tier 2/3 methodologies and recent research
 # =============================================================================
 
+
 @dataclass
 class DietAdjustments:
     """
@@ -61,6 +62,7 @@ class DietAdjustments:
     These multiply the base emission factor to account for diet composition.
     Reference: IPCC 2019 Refinement, Vol 4, Ch 10 + recent research.
     """
+
     # Base forage types (relative to standard pasture = 1.0)
     forage_factors: dict = None
 
@@ -71,13 +73,13 @@ class DietAdjustments:
         # Forage type affects methane yield (Ym - % of gross energy lost as CH4)
         # Higher fiber = more methane; higher digestibility = less methane
         self.forage_factors = {
-            "pasture_fresh": 1.0,      # Base case - fresh grass
-            "pasture_dry": 1.05,       # Dry/dormant pasture - slightly more
-            "hay": 1.08,               # Dried hay - higher fiber, harder to digest
-            "haylage": 0.95,           # Fermented, more digestible
-            "silage": 0.92,            # Well-fermented silage
+            "pasture_fresh": 1.0,  # Base case - fresh grass
+            "pasture_dry": 1.05,  # Dry/dormant pasture - slightly more
+            "hay": 1.08,  # Dried hay - higher fiber, harder to digest
+            "haylage": 0.95,  # Fermented, more digestible
+            "silage": 0.92,  # Well-fermented silage
             "grain_supplement": 0.85,  # Grain reduces CH4 per unit feed
-            "legume_pasture": 0.90,    # Clover/alfalfa - more digestible
+            "legume_pasture": 0.90,  # Clover/alfalfa - more digestible
         }
 
         # Additives that modify enteric fermentation
@@ -85,14 +87,14 @@ class DietAdjustments:
         self.additive_factors = {
             "none": 1.0,
             # Seaweeds - bromoform inhibits methanogenic archaea
-            "kelp": 0.88,              # Brown seaweed: 10-15% reduction (Kinley et al. 2016)
-            "asparagopsis": 0.35,      # Red seaweed: 50-80% reduction! (Roque et al. 2021)
-            "seaweed_meal": 0.85,      # Generic seaweed supplement
+            "kelp": 0.88,  # Brown seaweed: 10-15% reduction (Kinley et al. 2016)
+            "asparagopsis": 0.35,  # Red seaweed: 50-80% reduction! (Roque et al. 2021)
+            "seaweed_meal": 0.85,  # Generic seaweed supplement
             # Other additives
-            "tannins": 0.90,           # Condensed tannins: ~10% reduction
-            "lipids_oils": 0.85,       # Fat supplementation: ~15% reduction
-            "nitrate": 0.80,           # Nitrate: ~20% reduction (requires careful management)
-            "3nop": 0.70,              # 3-nitrooxypropanol (Bovaer): ~30% reduction
+            "tannins": 0.90,  # Condensed tannins: ~10% reduction
+            "lipids_oils": 0.85,  # Fat supplementation: ~15% reduction
+            "nitrate": 0.80,  # Nitrate: ~20% reduction (requires careful management)
+            "3nop": 0.70,  # 3-nitrooxypropanol (Bovaer): ~30% reduction
         }
 
 
@@ -107,6 +109,7 @@ class BreedAdjustments:
     Smaller breeds and more efficient converters produce less methane.
     Based on body weight and feed efficiency relationships.
     """
+
     # Relative to medium-sized meat breed = 1.0
     breed_factors: dict = None
 
@@ -117,47 +120,39 @@ class BreedAdjustments:
             "hampshire": 1.05,
             "texel": 1.00,
             "dorset": 1.00,
-
             # Medium breeds
             "corriedale": 1.00,
             "columbia": 1.00,
             "north_country_cheviot": 0.95,  # Efficient hill breed
             "cheviot": 0.95,
-
             # Smaller/primitive breeds
             "shetland": 0.80,
             "soay": 0.75,
             "icelandic": 0.85,
-
             # Hair sheep (no wool = different metabolism)
             "katahdin": 0.90,
             "dorper": 0.95,
             "st_croix": 0.85,
-
             # Wool breeds (different feed partitioning)
             "merino": 0.90,
             "rambouillet": 0.92,
-
             # Prolific/dairy breeds
             "finnish_landrace": 0.85,  # Small, efficient, prolific
             "finnsheep": 0.85,
             "finn": 0.85,
-            "east_friesian": 1.10,     # Large dairy breed, high intake
-            "lacaune": 1.05,           # Dairy breed
-            "awassi": 1.05,            # Dairy breed
-
+            "east_friesian": 1.10,  # Large dairy breed, high intake
+            "lacaune": 1.05,  # Dairy breed
+            "awassi": 1.05,  # Dairy breed
             # Longwool breeds
             "bluefaced_leicester": 1.00,
             "bfl": 1.00,
             "leicester_longwool": 1.02,
-            "lincoln": 1.05,           # Very large
+            "lincoln": 1.05,  # Very large
             "cotswold": 1.03,
-
             # Crosses
             "1st_cross": 1.00,
             "crossbred": 1.00,
-            "mule": 0.95,              # BFL x hill breed - efficient
-
+            "mule": 0.95,  # BFL x hill breed - efficient
             # Default
             "unknown": 1.00,
         }
@@ -174,16 +169,17 @@ class ClimateAdjustments:
     Cold climates require more feed for maintenance = more methane.
     Hot climates reduce feed intake = less methane (but heat stress issues).
     """
+
     # Relative to temperate (10-20°C avg) = 1.0
     climate_factors: dict = None
 
     def __post_init__(self):
         self.climate_factors = {
-            "cold": 1.10,      # < 5°C average - more feed needed
-            "cool": 1.05,      # 5-10°C average
-            "temperate": 1.00, # 10-20°C average (base case)
-            "warm": 0.95,      # 20-25°C average
-            "hot": 0.90,       # > 25°C average - reduced intake
+            "cold": 1.10,  # < 5°C average - more feed needed
+            "cool": 1.05,  # 5-10°C average
+            "temperate": 1.00,  # 10-20°C average (base case)
+            "warm": 0.95,  # 20-25°C average
+            "hot": 0.90,  # > 25°C average - reduced intake
         }
 
 
@@ -192,8 +188,9 @@ CLIMATE_ADJUSTMENTS = ClimateAdjustments()
 
 class PastureType(Enum):
     """Pasture management types affecting carbon dynamics."""
+
     INTENSIVE = "intensive"  # High input, frequent grazing
-    MODERATE = "moderate"    # Rotational grazing
+    MODERATE = "moderate"  # Rotational grazing
     EXTENSIVE = "extensive"  # Low input, infrequent grazing
     SILVOPASTURE = "silvopasture"  # Trees + pasture
 
@@ -201,6 +198,7 @@ class PastureType(Enum):
 @dataclass
 class CarbonFluxResult:
     """Results from carbon flux calculations."""
+
     # Gross Primary Production (kg C/ha/day)
     gpp: float
     # Net Primary Production (kg C/ha/day)
@@ -218,6 +216,7 @@ class CarbonFluxResult:
 @dataclass
 class LUEParams:
     """Light Use Efficiency parameters for GPP calculation."""
+
     # Maximum LUE under optimal conditions (g C / MJ PAR)
     lue_max: float
     # Temperature optimum (°C)
@@ -233,9 +232,9 @@ class LUEParams:
 # Based on MOD17 and CASA literature
 PASTURE_LUE = LUEParams(
     lue_max=1.2,  # g C / MJ PAR (Gilmanov et al. 2010)
-    t_opt=20.0,   # Optimal temperature for C3 grasses
-    t_min=0.0,    # Minimum temperature for growth
-    t_max=35.0,   # Maximum temperature for growth
+    t_opt=20.0,  # Optimal temperature for C3 grasses
+    t_min=0.0,  # Minimum temperature for growth
+    t_max=35.0,  # Maximum temperature for growth
     source="Gilmanov et al. 2010 [3], C3 temperate grasslands",
 )
 
@@ -287,7 +286,7 @@ def estimate_par(latitude: float, day_of_year: int) -> float:
     """
     # Solar constant and PAR fraction
     solar_constant = 1361  # W/m²
-    par_fraction = 0.48    # PAR is ~48% of total solar
+    par_fraction = 0.48  # PAR is ~48% of total solar
 
     # Calculate solar declination
     declination = 23.45 * math.sin(math.radians((284 + day_of_year) * 360 / 365))
@@ -306,10 +305,16 @@ def estimate_par(latitude: float, day_of_year: int) -> float:
     dr = 1 + 0.033 * math.cos(2 * math.pi * day_of_year / 365)
 
     # Daily extraterrestrial radiation (MJ/m²/day)
-    ra = (24 * 60 / math.pi) * solar_constant * dr * (
-        math.radians(hour_angle) * math.sin(lat_rad) * math.sin(dec_rad) +
-        math.cos(lat_rad) * math.cos(dec_rad) * math.sin(math.radians(hour_angle))
-    ) / 1e6  # Convert to MJ
+    ra = (
+        (24 * 60 / math.pi)
+        * solar_constant
+        * dr
+        * (
+            math.radians(hour_angle) * math.sin(lat_rad) * math.sin(dec_rad)
+            + math.cos(lat_rad) * math.cos(dec_rad) * math.sin(math.radians(hour_angle))
+        )
+        / 1e6
+    )  # Convert to MJ
 
     # Apply atmospheric transmission (~75% on clear day, ~40% on cloudy)
     # Use average for PNW (~55% due to frequent clouds)
@@ -392,10 +397,7 @@ def calculate_gpp(
     # Convert to kg C/ha/day
     gpp_kg_ha = gpp_g_m2 * 10  # 1 g/m² = 10 kg/ha
 
-    notes = (
-        f"fPAR={fpar:.2f}, PAR={par:.1f} MJ/m²/day, "
-        f"T_scalar={t_scalar:.2f}, LUE={PASTURE_LUE.lue_max} g C/MJ"
-    )
+    notes = f"fPAR={fpar:.2f}, PAR={par:.1f} MJ/m²/day, T_scalar={t_scalar:.2f}, LUE={PASTURE_LUE.lue_max} g C/MJ"
 
     return round(gpp_kg_ha, 1), notes
 
@@ -423,9 +425,7 @@ def calculate_carbon_flux(
         CarbonFluxResult with all carbon metrics
     """
     # Calculate GPP
-    gpp, gpp_notes = calculate_gpp(
-        ndvi, latitude, day_of_year, temperature
-    )
+    gpp, gpp_notes = calculate_gpp(ndvi, latitude, day_of_year, temperature)
 
     # NPP is approximately 50% of GPP for grasslands
     # (other 50% is plant respiration)
@@ -482,10 +482,10 @@ def estimate_annual_sequestration(
 
     # Management factor for soil carbon sequestration
     management_factors = {
-        PastureType.INTENSIVE: 0.3,    # Lower due to soil disturbance
-        PastureType.MODERATE: 0.5,     # Rotational grazing benefits
-        PastureType.EXTENSIVE: 0.4,    # Low input, moderate benefit
-        PastureType.SILVOPASTURE: 0.7, # Trees add significant C storage
+        PastureType.INTENSIVE: 0.3,  # Lower due to soil disturbance
+        PastureType.MODERATE: 0.5,  # Rotational grazing benefits
+        PastureType.EXTENSIVE: 0.4,  # Low input, moderate benefit
+        PastureType.SILVOPASTURE: 0.7,  # Trees add significant C storage
     }
 
     annual_gpp = 0.0
@@ -523,7 +523,7 @@ def estimate_annual_sequestration(
         "pasture_type": pasture_type.value,
         "notes": (
             f"GPP/NPP from NDVI using MOD17 approach. "
-            f"Soil sequestration assumes {management_factor*100:.0f}% management efficiency "
+            f"Soil sequestration assumes {management_factor * 100:.0f}% management efficiency "
             f"for {pasture_type.value} grazing. Literature range: 0.3-0.8 t C/ha/year [4]."
         ),
     }
@@ -540,11 +540,12 @@ class SheepEmissionFactors:
     Enteric fermentation is primary source (~97% of sheep CH4).
     Manure adds small amount (~3%).
     """
+
     # Enteric fermentation (kg CH4/head/year)
-    lamb: float = 4.0          # < 1 year, smaller rumen
-    ewe: float = 8.0           # Adult female
-    ram: float = 8.0           # Adult male (similar to ewe)
-    wether: float = 8.0        # Castrated male
+    lamb: float = 4.0  # < 1 year, smaller rumen
+    ewe: float = 8.0  # Adult female
+    ram: float = 8.0  # Adult male (similar to ewe)
+    wether: float = 8.0  # Castrated male
 
     # Lactating ewes produce more due to higher feed intake
     ewe_lactating: float = 10.0
@@ -716,8 +717,8 @@ def estimate_livestock_methane(
     """
     # IPCC Tier 1 emission factors for cattle (kg CH4/head/year)
     cattle_factors = {
-        "beef": 70,   # Range: 47-99 depending on region/feed
-        "dairy": 128, # Higher due to feed intake
+        "beef": 70,  # Range: 47-99 depending on region/feed
+        "dairy": 128,  # Higher due to feed intake
     }
 
     cattle_ef = cattle_factors.get(cattle_type, cattle_factors["beef"])

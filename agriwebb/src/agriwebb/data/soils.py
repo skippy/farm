@@ -83,9 +83,20 @@ async def get_mukey_at_point(lat: float, lon: float) -> str | None:
 async def query_soil_by_mukey(mukey: str) -> dict | None:
     """Query soil properties for a given map unit key."""
     columns = [
-        "mukey", "muname", "mukind", "compname", "comppct",
-        "taxorder", "drainage", "hydgrp", "sand_pct", "silt_pct",
-        "clay_pct", "organic_matter_pct", "ksat", "awc"
+        "mukey",
+        "muname",
+        "mukind",
+        "compname",
+        "comppct",
+        "taxorder",
+        "drainage",
+        "hydgrp",
+        "sand_pct",
+        "silt_pct",
+        "clay_pct",
+        "organic_matter_pct",
+        "ksat",
+        "awc",
     ]
 
     query = f"""
@@ -126,7 +137,7 @@ async def query_soil_by_mukey(mukey: str) -> dict | None:
                 rows = result["Table"]
                 if rows:
                     first_row = rows[0]
-                    if isinstance(first_row[0], str) and first_row[0].lower() in ['mukey', 'mu.mukey']:
+                    if isinstance(first_row[0], str) and first_row[0].lower() in ["mukey", "mu.mukey"]:
                         data_rows = rows[1:]
                     else:
                         data_rows = rows
@@ -168,14 +179,16 @@ async def query_soil_at_point(lat: float, lon: float) -> dict | None:
     """
     # Try SoilWeb's reflector API
     try:
-        url = f"https://casoilresource.lawr.ucdavis.edu/soil_web/reflector_api/soils.php?what=mapunit&lat={lat}&lon={lon}"
+        url = (
+            f"https://casoilresource.lawr.ucdavis.edu/soil_web/reflector_api/soils.php?what=mapunit&lat={lat}&lon={lon}"
+        )
         async with httpx.AsyncClient() as client:
             response = await client.get(url, timeout=15, follow_redirects=True)
             if response.status_code == 200:
                 html = response.text
 
                 # Parse mukey from HTML response
-                mukey_match = re.search(r'mukey=(\d{6,7})', html)
+                mukey_match = re.search(r"mukey=(\d{6,7})", html)
                 if mukey_match:
                     mukey = mukey_match.group(1)
                     result = await query_soil_by_mukey(mukey)
@@ -183,7 +196,7 @@ async def query_soil_at_point(lat: float, lon: float) -> dict | None:
                         return result
 
                 # Pattern 2: <td> NNNNNN </td>
-                cells = re.findall(r'<td>\s*(\d{6,7})\s*</td>', html)
+                cells = re.findall(r"<td>\s*(\d{6,7})\s*</td>", html)
                 for cell in cells:
                     result = await query_soil_by_mukey(cell)
                     if result:

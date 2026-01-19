@@ -42,27 +42,31 @@ async def fetch_paddock_history(paddock: dict, start_year: int = 2018) -> list[d
                     scale=30,
                 )
 
-                results.append({
-                    "date": start.isoformat(),
-                    "year": year,
-                    "month": month,
-                    "ndvi_mean": result["ndvi_mean"],
-                    "ndvi_stddev": result["ndvi_stddev"],
-                    "pixel_count": result["pixel_count"],
-                    "cloud_free_pct": result["cloud_free_pct"],
-                })
+                results.append(
+                    {
+                        "date": start.isoformat(),
+                        "year": year,
+                        "month": month,
+                        "ndvi_mean": result["ndvi_mean"],
+                        "ndvi_stddev": result["ndvi_stddev"],
+                        "pixel_count": result["pixel_count"],
+                        "cloud_free_pct": result["cloud_free_pct"],
+                    }
+                )
 
             except Exception as e:
-                results.append({
-                    "date": start.isoformat(),
-                    "year": year,
-                    "month": month,
-                    "ndvi_mean": None,
-                    "ndvi_stddev": None,
-                    "pixel_count": 0,
-                    "cloud_free_pct": 0,
-                    "error": str(e),
-                })
+                results.append(
+                    {
+                        "date": start.isoformat(),
+                        "year": year,
+                        "month": month,
+                        "ndvi_mean": None,
+                        "ndvi_stddev": None,
+                        "pixel_count": 0,
+                        "cloud_free_pct": 0,
+                        "error": str(e),
+                    }
+                )
 
     return results
 
@@ -128,17 +132,14 @@ async def main():
     print(f"Data saved to: {output_file}")
 
     # Summary stats
-    total_records = sum(
-        len(p["history"]) for p in all_data["paddocks"].values()
-    )
+    total_records = sum(len(p["history"]) for p in all_data["paddocks"].values())
     valid_records = sum(
-        sum(1 for r in p["history"] if r["ndvi_mean"] is not None)
-        for p in all_data["paddocks"].values()
+        sum(1 for r in p["history"] if r["ndvi_mean"] is not None) for p in all_data["paddocks"].values()
     )
 
     print(f"Total records: {total_records}")
     print(f"Valid records: {valid_records}")
-    print(f"Coverage: {valid_records/total_records*100:.1f}%")
+    print(f"Coverage: {valid_records / total_records * 100:.1f}%")
 
 
 if __name__ == "__main__":

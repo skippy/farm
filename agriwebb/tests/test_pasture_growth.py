@@ -333,7 +333,7 @@ class TestPaddockGrowthModel:
                 "awc_cm_cm": 0.15,
                 "drainage": "Well drained",
                 "organic_matter_pct": 4.5,
-            }
+            },
         }
         model = PaddockGrowthModel.from_paddock_data(paddock, soil)
         assert model.paddock_name == "Test Paddock"
@@ -400,8 +400,6 @@ class TestSeasonalGrowthPatterns:
 
     def test_spring_growth_highest(self):
         """Spring produces highest growth rates."""
-        soil = SoilWaterState(awc_mm=50, current_mm=35)
-
         spring = calculate_daily_growth(
             d=date(2024, 4, 15),
             temp_mean_c=15,

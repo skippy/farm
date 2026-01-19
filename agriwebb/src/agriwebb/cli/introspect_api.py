@@ -44,7 +44,7 @@ async def main():
                     type_name = of.get("name") if of else "?"
                     if not type_name and of:
                         type_name = of.get("ofType", {}).get("name", "?")
-                desc = field.get('description', '')
+                desc = field.get("description", "")
                 print(f"  - {field['name']}: {type_name} ({field_type.get('kind')}) - {desc}")
             print()
 

@@ -6,9 +6,9 @@ from pathlib import Path
 
 import httpx
 
-from agriwebb import client
 from agriwebb.config import settings
 from agriwebb.core import get_cache_dir
+from agriwebb.weather import api as weather_api
 
 NCEI_API_URL = "https://www.ncei.noaa.gov/access/services/data/v1"
 
@@ -76,7 +76,7 @@ async def main() -> None:
     print(f"Temp: {weather['temp_min_f']}°F - {weather['temp_max_f']}°F")
 
     print("\nPushing to AgriWebb...")
-    response = await client.add_rainfall(weather["date"], weather["precipitation_inches"])
+    response = await weather_api.add_rainfall(weather["date"], weather["precipitation_inches"])
 
     if "errors" in response:
         print(f"AgriWebb error: {response['errors']}")

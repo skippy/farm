@@ -6,17 +6,63 @@ Provides functions to fetch and analyze animal data including:
 - Mobs/herds
 - Weight records
 - Health treatments
+- Full cache download for local analysis
 """
 
 import asyncio
+import contextlib
 import json
+from datetime import datetime
+from pathlib import Path
 
-from agriwebb.core import graphql, settings
+import httpx
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential_jitter,
+)
+
+from agriwebb.core import get_cache_dir, graphql, settings
+
+
+# 500 errors should NOT be retried - they indicate server overload
+# Only retry on timeouts/connection errors
+class RetryableError(Exception):
+    """Transient error that should be retried (timeouts, connection errors)."""
+
+    pass
+
+
+# =============================================================================
+# Configuration Constants
+# =============================================================================
+
+# Default cache file name
+DEFAULT_CACHE_FILE = "animals.json"
 
 # Cache freshness threshold - skip re-fetch if cache is younger than this
 CACHE_FRESHNESS_HOURS = 24
 
-# Common field fragments for reuse
+# Concurrency control: max parallel API requests
+MAX_CONCURRENT_REQUESTS = 5
+
+# Small delay between paginated requests (seconds)
+PAGINATION_DELAY = 0.1
+
+# Retry configuration
+MAX_RETRIES = 3  # Reduced - fail faster on persistent errors
+MIN_WAIT_SECONDS = 1
+MAX_WAIT_SECONDS = 10
+
+# Circuit breaker - stop everything after too many consecutive failures
+# Now that we don't retry 500 errors, we can use a lower threshold
+MAX_CONSECUTIVE_FAILURES = 5
+
+# =============================================================================
+# GraphQL Query Fragments (for individual queries)
+# =============================================================================
+
 ANIMAL_IDENTITY_FIELDS = """
     identity {
         name
@@ -69,6 +115,226 @@ MANAGEMENT_GROUP_FIELDS = """
         name
     }
 """
+
+# =============================================================================
+# GraphQL Queries for Cache Download (using variables)
+# =============================================================================
+
+ANIMALS_QUERY = """
+query GetAnimals($farmId: String!, $limit: Int!, $skip: Int!) {
+  animals(farmId: $farmId, limit: $limit, skip: $skip) {
+    animalId
+    farmId
+    identity {
+      name
+      eid
+      vid
+      managementTag
+      brand
+      tattoo
+    }
+    characteristics {
+      birthDate
+      birthYear
+      birthDateAccuracy
+      breedAssessed
+      sex
+      speciesCommonName
+      visualColor
+      ageClass
+    }
+    state {
+      onFarm
+      onFarmDate
+      offFarmDate
+      currentLocationId
+      fate
+      disposalMethod
+      reproductiveStatus
+      fertilityStatus
+      offspringCount
+      weaned
+      lastSeen
+      daysReared
+    }
+    parentage {
+      sires {
+        parentAnimalId
+        parentAnimalIdentity { name vid eid }
+        parentType
+      }
+      dams {
+        parentAnimalId
+        parentAnimalIdentity { name vid eid }
+        parentType
+      }
+      surrogate {
+        parentAnimalId
+        parentAnimalIdentity { name vid eid }
+        parentType
+      }
+    }
+    managementGroupId
+    managementGroup {
+      managementGroupId
+      name
+      species
+    }
+  }
+}
+"""
+
+# Records query for animal history
+# TODO: Re-enable AnimalTreatmentRecord and FeedRecord fragments once AgriWebb fixes
+# their API - these fragments cause 500 Internal Server Errors (as of Jan 2026)
+#
+#     ... on AnimalTreatmentRecord {
+#       treatments {
+#         healthProduct
+#         reasonForTreatment
+#         totalApplied { value unit }
+#       }
+#     }
+#     ... on FeedRecord {
+#       feeds {
+#         feedType
+#         amount { value unit }
+#       }
+#     }
+#
+RECORDS_QUERY_FULL = """
+query GetRecords($farmId: String!, $animalId: String, $limit: Int!, $skip: Int!) {
+  records(options: {farmId: $farmId, animalId: $animalId, limit: $limit, skip: $skip}) {
+    recordId
+    recordType
+    observationDate
+    ... on WeighRecord {
+      weight { value unit }
+      weighEvent
+    }
+    ... on ScoreRecord {
+      score { value }
+    }
+    ... on LocationChangedRecord {
+      locationId
+    }
+    ... on PregnancyScanRecord {
+      fetusCount
+      fetalAge
+    }
+  }
+}
+"""
+
+
+CACHE_FIELDS_QUERY = """
+query GetFields($farmId: String) {
+  fields(filter: {farmId: {_eq: $farmId}}) {
+    id
+    name
+    totalArea
+    grazableArea
+    landUse
+  }
+}
+"""
+
+
+# =============================================================================
+# Exceptions
+# =============================================================================
+
+
+class AgriWebbAPIError(Exception):
+    """Raised when AgriWebb API returns an error."""
+
+    pass
+
+
+class CircuitBreakerOpen(Exception):
+    """Raised when too many consecutive failures have occurred."""
+
+    pass
+
+
+class CircuitBreaker:
+    """Simple circuit breaker to stop after too many consecutive failures."""
+
+    def __init__(self, max_failures: int = MAX_CONSECUTIVE_FAILURES):
+        self.max_failures = max_failures
+        self.consecutive_failures = 0
+        self.is_open = False
+        self._lock = asyncio.Lock()
+
+    async def record_success(self):
+        async with self._lock:
+            self.consecutive_failures = 0
+
+    async def record_failure(self):
+        async with self._lock:
+            self.consecutive_failures += 1
+            if self.consecutive_failures >= self.max_failures:
+                self.is_open = True
+                print(f"\n  CIRCUIT BREAKER: {self.consecutive_failures} consecutive failures - stopping")
+
+    async def check(self):
+        if self.is_open:
+            raise CircuitBreakerOpen(
+                f"Stopping after {self.consecutive_failures} consecutive API failures. "
+                "The AgriWebb API may be overloaded. Try again later."
+            )
+
+
+# =============================================================================
+# GraphQL Helpers with Retry
+# =============================================================================
+
+
+@retry(
+    retry=retry_if_exception_type(RetryableError),
+    stop=stop_after_attempt(MAX_RETRIES),
+    wait=wait_exponential_jitter(initial=MIN_WAIT_SECONDS, max=MAX_WAIT_SECONDS, jitter=2),
+    reraise=True,
+)
+async def _graphql_with_retry(query: str, variables: dict | None = None) -> dict:
+    """Execute a GraphQL query with exponential backoff + jitter on errors.
+
+    Retries on:
+    - Timeouts
+    - Connection errors
+    - HTTP 5xx errors (server overload)
+    - GraphQL errors with "Internal Server Error"
+
+    After MAX_RETRIES failures, raises AgriWebbAPIError.
+    """
+    try:
+        result = await graphql(query, variables)
+    except httpx.TimeoutException as e:
+        raise RetryableError(f"Request timed out: {e}") from e
+    except httpx.ConnectError as e:
+        raise RetryableError(f"Connection failed: {e}") from e
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code >= 500:
+            # Server error - retry with backoff
+            raise RetryableError(f"HTTP {e.response.status_code}") from e
+        # Client error (4xx) - don't retry
+        raise AgriWebbAPIError(f"HTTP {e.response.status_code}: {e}") from e
+
+    if "errors" in result:
+        errors = result["errors"]
+        error_msg = errors[0].get("message", str(errors)) if errors else str(result)
+        # Check if this is a server error we should retry
+        if any("Internal Server Error" in str(e) for e in errors):
+            raise RetryableError(f"GraphQL server error: {error_msg}")
+        # Non-retryable GraphQL error
+        raise AgriWebbAPIError(f"GraphQL error: {error_msg}")
+
+    return result
+
+
+# =============================================================================
+# Normalization Helpers
+# =============================================================================
 
 
 def _normalize_animal(animal: dict) -> dict:
@@ -140,6 +406,11 @@ def _normalize_animal(animal: dict) -> dict:
     }
 
 
+# =============================================================================
+# Individual Animal Queries
+# =============================================================================
+
+
 async def find_animal(identifier: str) -> dict:
     """
     Find an animal by any identifier (ID, EID, visual tag, or name).
@@ -201,9 +472,7 @@ async def find_animal(identifier: str) -> dict:
     if animals:
         if len(animals) > 1:
             matches = ", ".join(
-                _normalize_animal(a).get("visualTag")
-                or _normalize_animal(a).get("name")
-                or a["animalId"]
+                _normalize_animal(a).get("visualTag") or _normalize_animal(a).get("name") or a["animalId"]
                 for a in animals
             )
             raise ValueError(f"Multiple animals match '{identifier}': {matches}")
@@ -232,9 +501,7 @@ async def find_animal(identifier: str) -> dict:
     if animals:
         if len(animals) > 1:
             matches = ", ".join(
-                _normalize_animal(a).get("visualTag")
-                or _normalize_animal(a).get("name")
-                or a["animalId"]
+                _normalize_animal(a).get("visualTag") or _normalize_animal(a).get("name") or a["animalId"]
                 for a in animals
             )
             raise ValueError(f"Multiple animals match '{identifier}': {matches}")
@@ -263,9 +530,7 @@ async def find_animal(identifier: str) -> dict:
     if animals:
         if len(animals) > 1:
             matches = ", ".join(
-                _normalize_animal(a).get("visualTag")
-                or _normalize_animal(a).get("name")
-                or a["animalId"]
+                _normalize_animal(a).get("visualTag") or _normalize_animal(a).get("name") or a["animalId"]
                 for a in animals
             )
             raise ValueError(f"Multiple animals match '{identifier}': {matches}")
@@ -311,7 +576,7 @@ async def get_animals(
     if status == "onFarm":
         filters.append("state: { onFarm: { _eq: true } }")
     if species:
-        filters.append(f'characteristics: {{ speciesCommonName: {{ _eq: {species} }} }}')
+        filters.append(f"characteristics: {{ speciesCommonName: {{ _eq: {species} }} }}")
 
     filter_str = f", filter: {{ {', '.join(filters)} }}" if filters else ""
 
@@ -610,7 +875,251 @@ async def get_pregnancies(animal_id: str | None = None) -> list[dict]:
     return result.get("data", {}).get("pregnancyRecords", [])
 
 
-# --- Analysis helpers ---
+# =============================================================================
+# Cache Download Functions
+# =============================================================================
+
+
+async def _fetch_all_animals_for_cache(page_size: int = 200) -> list[dict]:
+    """
+    Fetch all animals with full details using pagination.
+
+    Args:
+        page_size: Number of animals per page (default 200)
+
+    Returns:
+        List of all animal records
+    """
+    farm_id = settings.agriwebb_farm_id
+    all_animals = []
+    skip = 0
+
+    print("Fetching animals from AgriWebb...")
+
+    while True:
+        variables = {"farmId": farm_id, "limit": page_size, "skip": skip}
+        result = await _graphql_with_retry(ANIMALS_QUERY, variables)
+        animals = result.get("data", {}).get("animals", [])
+        all_animals.extend(animals)
+
+        if len(animals) < page_size:
+            # Last page - no more animals
+            break
+
+        skip += page_size
+        print(f"  Fetched {len(all_animals)} animals so far...")
+        await asyncio.sleep(PAGINATION_DELAY)
+
+    print(f"  Found {len(all_animals)} animals total")
+    return all_animals
+
+
+async def _fetch_animal_records(animal_id: str, page_size: int = 100) -> list[dict]:
+    """Fetch all records for a specific animal with pagination.
+
+    Record types in AgriWebb API (from schema introspection):
+    - WeighRecord: weight measurements
+    - ScoreRecord: body condition scores
+    - LocationChangedRecord: paddock movements
+    - PregnancyScanRecord: pregnancy scans
+    - AnimalTreatmentRecord: health treatments
+    - FeedRecord: feed records
+
+    Args:
+        animal_id: The animal ID to fetch records for
+        page_size: Number of records per page (default 100)
+
+    Returns:
+        List of all records for the animal
+    """
+    farm_id = settings.agriwebb_farm_id
+    all_records = []
+    skip = 0
+
+    while True:
+        variables = {
+            "farmId": farm_id,
+            "animalId": animal_id,
+            "limit": page_size,
+            "skip": skip,
+        }
+        result = await _graphql_with_retry(RECORDS_QUERY_FULL, variables)
+        records = result.get("data", {}).get("records", [])
+        all_records.extend(records)
+
+        if len(records) < page_size:
+            # Last page
+            break
+
+        skip += page_size
+        await asyncio.sleep(PAGINATION_DELAY)
+
+    return all_records
+
+
+async def _fetch_fields_for_cache() -> list[dict]:
+    """Fetch all fields/paddocks for location name mapping."""
+    farm_id = settings.agriwebb_farm_id
+    variables = {"farmId": farm_id}
+
+    print("Fetching fields/paddocks...")
+    try:
+        result = await _graphql_with_retry(CACHE_FIELDS_QUERY, variables)
+    except Exception as e:
+        print(f"  Warning: Could not fetch fields: {e}")
+        return []
+
+    fields = result.get("data", {}).get("fields", [])
+    print(f"  Found {len(fields)} fields/paddocks")
+    return fields
+
+
+async def cache_all_animals(output_path: Path) -> dict:
+    """Download all animal data to a local cache file.
+
+    This function fetches all animals with their full details and records,
+    then saves them to a JSON file for fast local analysis.
+
+    Args:
+        output_path: Path to write the cache file
+
+    Returns:
+        The cached data dict
+    """
+    print("=" * 60)
+    print("AgriWebb Animal Data Cache")
+    print("=" * 60)
+    print()
+
+    # Fetch animals (without embedded records - we'll fetch those separately)
+    animals = await _fetch_all_animals_for_cache()
+
+    # Fetch fields for location name mapping
+    fields = await _fetch_fields_for_cache()
+    field_names = {f["id"]: f["name"] for f in fields}
+
+    # Extract management groups from animals (since direct query may lack permissions)
+    groups_by_id = {}
+    for a in animals:
+        mg = a.get("managementGroup")
+        if mg and mg.get("managementGroupId"):
+            groups_by_id[mg["managementGroupId"]] = mg
+    groups = list(groups_by_id.values())
+    print(f"  Extracted {len(groups)} management groups from animals")
+
+    # Fetch complete records for each animal with concurrency control
+    print()
+    print(f"Fetching records for {len(animals)} animals ({MAX_CONCURRENT_REQUESTS} concurrent)...")
+
+    semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
+    circuit_breaker = CircuitBreaker()
+    progress = {"completed": 0, "records": 0, "errors": 0, "skipped": 0}
+    progress_lock = asyncio.Lock()
+
+    async def fetch_with_semaphore(animal: dict) -> None:
+        """Fetch records for a single animal with semaphore control."""
+        # Check circuit breaker before attempting
+        try:
+            await circuit_breaker.check()
+        except CircuitBreakerOpen:
+            animal["records"] = []
+            async with progress_lock:
+                progress["skipped"] += 1
+            return
+
+        async with semaphore:
+            animal_id = animal["animalId"]
+            try:
+                records = await _fetch_animal_records(animal_id)
+                animal["records"] = records
+                await circuit_breaker.record_success()
+                async with progress_lock:
+                    progress["completed"] += 1
+                    progress["records"] += len(records)
+            except RuntimeError as e:
+                animal["records"] = []
+                await circuit_breaker.record_failure()
+                async with progress_lock:
+                    progress["completed"] += 1
+                    progress["errors"] += 1
+                # Only print if circuit breaker hasn't tripped yet
+                if not circuit_breaker.is_open:
+                    print(f"  Warning: {e}")
+
+            # Progress update every 25 animals
+            async with progress_lock:
+                if progress["completed"] % 25 == 0 or progress["completed"] == len(animals):
+                    print(f"  Progress: {progress['completed']}/{len(animals)} animals, {progress['records']} records")
+
+    # Run all fetches concurrently with semaphore limiting
+    # Circuit breaker may have stopped some tasks - suppress any exceptions
+    with contextlib.suppress(Exception):
+        await asyncio.gather(*[fetch_with_semaphore(animal) for animal in animals])
+
+    # Check if we stopped due to circuit breaker
+    if circuit_breaker.is_open:
+        print("\n  Stopped early due to API errors. Saving partial data...")
+        print(f"  Skipped {progress['skipped']} animals due to circuit breaker")
+
+    total_records = progress["records"]
+    fallback_count = progress["errors"]
+
+    print(f"  Total records fetched: {total_records}")
+    if fallback_count > 0:
+        print(f"  Warning: {fallback_count} animals had issues fetching records")
+
+    # Build the export
+    data = {
+        "exported_at": datetime.now().isoformat(),
+        "farm_id": settings.agriwebb_farm_id,
+        "summary": {
+            "total_animals": len(animals),
+            "total_records": total_records,
+            "management_groups": len(groups),
+            "fields": len(fields),
+        },
+        "animals": animals,
+        "management_groups": groups,
+        "fields": fields,
+        "field_names": field_names,
+    }
+
+    # Add some computed indices for easier lookup
+    data["indices"] = {
+        "by_id": {a["animalId"]: i for i, a in enumerate(animals)},
+        "by_name": {},
+        "by_vid": {},
+        "by_eid": {},
+    }
+
+    for i, a in enumerate(animals):
+        identity = a.get("identity") or {}
+        if identity.get("name"):
+            data["indices"]["by_name"][identity["name"].lower()] = i
+        if identity.get("vid"):
+            data["indices"]["by_vid"][identity["vid"].lower()] = i
+        if identity.get("eid"):
+            data["indices"]["by_eid"][identity["eid"]] = i
+
+    # Write to file
+    print()
+    print(f"Writing to {output_path}...")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w") as f:
+        json.dump(data, f, indent=2, default=str)
+
+    size_mb = output_path.stat().st_size / (1024 * 1024)
+    print(f"  Wrote {size_mb:.2f} MB")
+    print()
+    print("Done! You can now analyze the data locally.")
+    print(f"  File: {output_path}")
+
+    return data
+
+
+# =============================================================================
+# Analysis Helpers
+# =============================================================================
 
 
 def format_lineage_tree(animal: dict, indent: int = 0) -> str:
@@ -684,12 +1193,15 @@ def summarize_animals(animals: list[dict]) -> dict:
     return summary
 
 
-# --- CLI ---
+# =============================================================================
+# CLI
+# =============================================================================
 
 
 async def cli_main() -> None:
     """CLI entry point for livestock data."""
     import argparse
+    from datetime import timedelta
 
     parser = argparse.ArgumentParser(description="Livestock data from AgriWebb")
     subparsers = parser.add_subparsers(dest="command", help="Command")
@@ -708,9 +1220,7 @@ async def cli_main() -> None:
     # lineage command
     lineage_parser = subparsers.add_parser("lineage", help="Show animal lineage")
     lineage_parser.add_argument("id", help="Animal ID, EID, visual tag, or name")
-    lineage_parser.add_argument(
-        "--generations", type=int, default=3, help="Generations to fetch"
-    )
+    lineage_parser.add_argument("--generations", type=int, default=3, help="Generations to fetch")
     lineage_parser.add_argument("--json", action="store_true", help="Output as JSON")
 
     # offspring command
@@ -725,16 +1235,9 @@ async def cli_main() -> None:
     subparsers.add_parser("summary", help="Show herd summary")
 
     # cache command - download all data to local JSON
-    cache_parser = subparsers.add_parser(
-        "cache", help="Download all animal data to local cache"
-    )
-    cache_parser.add_argument(
-        "--output", "-o", type=str, help="Output file path"
-    )
-    cache_parser.add_argument(
-        "--refresh", action="store_true",
-        help="Force full re-fetch, ignoring cache age"
-    )
+    cache_parser = subparsers.add_parser("cache", help="Download all animal data to local cache")
+    cache_parser.add_argument("--output", "-o", type=str, help="Output file path")
+    cache_parser.add_argument("--refresh", action="store_true", help="Force full re-fetch, ignoring cache age")
 
     args = parser.parse_args()
 
@@ -829,17 +1332,12 @@ async def cli_main() -> None:
             print(f"  {k}: {v}")
 
     elif args.command == "cache":
-        from datetime import datetime, timedelta
-        from pathlib import Path
-
-        from agriwebb.sync.animals import DEFAULT_CACHE_FILE, get_cache_dir, sync_all
-
         if args.output:
             output_path = Path(args.output)
         else:
             output_path = get_cache_dir() / DEFAULT_CACHE_FILE
 
-        refresh = getattr(args, 'refresh', False)
+        refresh = getattr(args, "refresh", False)
 
         # Smart caching: skip if cache is fresh (unless --refresh)
         if not refresh and output_path.exists():
@@ -852,7 +1350,7 @@ async def cli_main() -> None:
                 print(f"File: {output_path}")
                 return
 
-        await sync_all(output_path)
+        await cache_all_animals(output_path)
 
     else:
         parser.print_help()

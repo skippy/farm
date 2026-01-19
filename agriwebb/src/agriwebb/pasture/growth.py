@@ -45,10 +45,10 @@ TEMP_MAX = 32.0  # °C - above this, no growth (heat stress)
 # Seasonal maximum potential growth rates (kg DM/ha/day)
 # Based on PNW maritime climate patterns
 SEASONAL_MAX_GROWTH = {
-    "winter": 15,   # Dec-Feb: cool, wet, short days
-    "spring": 80,   # Mar-May: peak growth, warming + moisture
-    "summer": 25,   # Jun-Aug: dry, dormancy without irrigation
-    "fall": 50,     # Sep-Nov: recovery after first rains
+    "winter": 15,  # Dec-Feb: cool, wet, short days
+    "spring": 80,  # Mar-May: peak growth, warming + moisture
+    "summer": 25,  # Jun-Aug: dry, dormancy without irrigation
+    "fall": 50,  # Sep-Nov: recovery after first rains
 }
 
 # Soil moisture parameters
@@ -96,6 +96,7 @@ def get_season(d: date) -> Season:
 # Response Functions
 # -----------------------------------------------------------------------------
 
+
 def temperature_factor(temp_mean_c: float) -> float:
     """
     Calculate growth factor based on mean daily temperature.
@@ -138,14 +139,12 @@ def moisture_factor(soil_moisture_fraction: float) -> float:
         return 0.0
     elif soil_moisture_fraction < MOISTURE_STRESS_POINT:
         # Stressed - linear increase
-        return (soil_moisture_fraction - MOISTURE_WILTING_POINT) / (
-            MOISTURE_STRESS_POINT - MOISTURE_WILTING_POINT
-        ) * 0.5  # max 0.5 when stressed
+        return (
+            (soil_moisture_fraction - MOISTURE_WILTING_POINT) / (MOISTURE_STRESS_POINT - MOISTURE_WILTING_POINT) * 0.5
+        )  # max 0.5 when stressed
     elif soil_moisture_fraction < MOISTURE_OPTIMAL:
         # Suboptimal but not stressed
-        return 0.5 + (soil_moisture_fraction - MOISTURE_STRESS_POINT) / (
-            MOISTURE_OPTIMAL - MOISTURE_STRESS_POINT
-        ) * 0.5
+        return 0.5 + (soil_moisture_fraction - MOISTURE_STRESS_POINT) / (MOISTURE_OPTIMAL - MOISTURE_STRESS_POINT) * 0.5
     elif soil_moisture_fraction <= MOISTURE_WATERLOG:
         # Optimal range
         return 1.0
@@ -178,7 +177,7 @@ def soil_quality_factor(
     # Organic matter bonus (above 3% baseline)
     if organic_matter_pct and organic_matter_pct > 3.0:
         bonus = (organic_matter_pct - 3.0) * OM_BONUS_PER_PERCENT
-        factor *= (1.0 + min(bonus, 0.15))  # cap at 15% bonus
+        factor *= 1.0 + min(bonus, 0.15)  # cap at 15% bonus
 
     return factor
 
@@ -186,6 +185,7 @@ def soil_quality_factor(
 # -----------------------------------------------------------------------------
 # Water Balance Model
 # -----------------------------------------------------------------------------
+
 
 @dataclass
 class SoilWaterState:
@@ -237,9 +237,7 @@ class SoilWaterState:
             actual_et = potential_et
         elif self.fraction > MOISTURE_WILTING_POINT:
             # Reduced ET when stressed
-            stress_factor = (self.fraction - MOISTURE_WILTING_POINT) / (
-                MOISTURE_STRESS_POINT - MOISTURE_WILTING_POINT
-            )
+            stress_factor = (self.fraction - MOISTURE_WILTING_POINT) / (MOISTURE_STRESS_POINT - MOISTURE_WILTING_POINT)
             actual_et = potential_et * stress_factor
         else:
             actual_et = 0.0
@@ -258,8 +256,10 @@ class SoilWaterState:
 # Daily Growth Calculation
 # -----------------------------------------------------------------------------
 
+
 class DailyGrowthResult(TypedDict):
     """Result of daily growth calculation."""
+
     date: str
     growth_kg_ha_day: float
     temp_factor: float
@@ -337,6 +337,7 @@ def calculate_daily_growth(
 # Paddock Growth Calculator
 # -----------------------------------------------------------------------------
 
+
 @dataclass
 class PaddockGrowthModel:
     """Growth model for a specific paddock."""
@@ -361,9 +362,7 @@ class PaddockGrowthModel:
             soil_water=SoilWaterState.from_soil_data(soil_data),
             drainage=soil_data.get("drainage"),
             organic_matter_pct=(
-                float(soil_data.get("organic_matter_pct"))
-                if soil_data.get("organic_matter_pct")
-                else None
+                float(soil_data.get("organic_matter_pct")) if soil_data.get("organic_matter_pct") else None
             ),
         )
 
@@ -390,6 +389,7 @@ class PaddockGrowthModel:
 # Farm-wide Growth Calculation
 # -----------------------------------------------------------------------------
 
+
 def load_paddock_soils(cache_path: Path | None = None, auto_fetch: bool = True) -> dict:
     """Load paddock soil data from cache.
 
@@ -403,12 +403,14 @@ def load_paddock_soils(cache_path: Path | None = None, auto_fetch: bool = True) 
             import asyncio
 
             from agriwebb.data.soils import fetch_all_paddock_soils
+
             print("Soil data not cached. Fetching from USDA...")
             # Handle both sync and async contexts
             try:
                 asyncio.get_running_loop()
                 # We're in an async context - use thread pool
                 import concurrent.futures
+
                 with concurrent.futures.ThreadPoolExecutor() as pool:
                     pool.submit(asyncio.run, fetch_all_paddock_soils(verbose=False)).result()
             except RuntimeError:

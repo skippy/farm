@@ -2,19 +2,18 @@
 
 Combines NOAA/NCEI and Open-Meteo data sources into a single interface.
 The implementation details (which API is used) are abstracted away.
+
+Data fetching is handled by the ncei module; this module handles the
+AgriWebb integration and user-facing commands.
 """
 
 import argparse
 import asyncio
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
-from agriwebb.weather import openmeteo
-from agriwebb.weather.ncei import (
-    fetch_ncei_date_range,
-    list_rainfalls,
-    save_weather_json,
-    sync_weather,
-)
+from agriwebb.core import get_cache_dir, settings
+from agriwebb.weather import api as weather_api
+from agriwebb.weather import ncei, openmeteo
 
 
 async def cmd_current(args: argparse.Namespace) -> None:
@@ -28,18 +27,24 @@ async def cmd_current(args: argparse.Namespace) -> None:
 
 async def cmd_forecast(args: argparse.Namespace) -> None:
     """Show weather forecast."""
-    days = getattr(args, 'days', 7)
+    days = getattr(args, "days", 7)
     print(f"\n{days}-day forecast:")
     forecast = await openmeteo.fetch_forecast(days=days, include_past_days=0)
     print(f"{'Date':<12} {'Temp':<10} {'Precip':<10} {'ET0':<8}")
     print("-" * 42)
     for day in forecast:
-        print(f"{day['date']:<12} {day['temp_min_c']:.0f}-{day['temp_max_c']:.0f}°C    "
-              f"{day['precip_mm']:.1f} mm    {day['et0_mm']:.1f} mm")
+        print(
+            f"{day['date']:<12} {day['temp_min_c']:.0f}-{day['temp_max_c']:.0f}°C    "
+            f"{day['precip_mm']:.1f} mm    {day['et0_mm']:.1f} mm"
+        )
 
 
 async def cmd_sync(args: argparse.Namespace) -> None:
-    """Sync rainfall data to AgriWebb."""
+    """Sync rainfall data to AgriWebb.
+
+    Uses NOAA station data where available (preferred, but 5-6 day delay),
+    falls back to Open-Meteo for recent days (near-real-time).
+    """
     # Calculate total days from flags
     total_days = 0
     if args.days:
@@ -53,20 +58,80 @@ async def cmd_sync(args: argparse.Namespace) -> None:
         print("Error: Must specify --days, --months, or --years")
         return
 
-    await sync_weather(
-        days=total_days,
-        push_to_agriwebb=not args.dry_run,
-    )
+    push_to_agriwebb = not args.dry_run
+    end_date = date.today()
+    start_date = end_date - timedelta(days=total_days)
+
+    print(f"Syncing rainfall from {start_date} to {end_date}...")
+    print(f"Sources: NOAA station {settings.ncei_station_id} + Open-Meteo")
+
+    # Fetch combined data from both sources
+    all_weather = await ncei.fetch_combined_precipitation(start_date, end_date)
+
+    # Count by source
+    noaa_count = sum(1 for w in all_weather if w.get("source") == "noaa")
+    openmeteo_count = sum(1 for w in all_weather if w.get("source") == "open-meteo")
+
+    print(f"Retrieved {len(all_weather)} days: {noaa_count} from NOAA, {openmeteo_count} from Open-Meteo")
+
+    # Show data
+    print(f"\n{'Date':<12} {'Source':<12} {'Precip':>8}")
+    print("-" * 34)
+    for w in all_weather:
+        print(f'{w["date"]:<12} {w.get("source", "unknown"):<12} {w["precipitation_inches"]:>7.2f}"')
+
+    if not push_to_agriwebb:
+        print("\nSkipping AgriWebb push (dry run).")
+        return
+
+    # Push to AgriWebb
+    print("\nPushing to AgriWebb...")
+    success_count = 0
+    error_count = 0
+
+    for weather in all_weather:
+        try:
+            response = await weather_api.add_rainfall(weather["date"], weather["precipitation_inches"])
+
+            if "errors" in response:
+                error_count += 1
+            else:
+                success_count += 1
+
+        except Exception as e:
+            error_count += 1
+            print(f"  Error for {weather['date']}: {e}")
+
+    print(f"Completed: {success_count} successful, {error_count} errors")
 
 
 async def cmd_list(args: argparse.Namespace) -> None:
     """List rainfall records in AgriWebb."""
-    await list_rainfalls()
+    print("Fetching existing rainfall records from AgriWebb...")
+    rainfalls = await weather_api.get_rainfalls()
+
+    if not rainfalls:
+        print("No rainfall records found.")
+        return
+
+    print(f"Found {len(rainfalls)} rainfall records.")
+
+    # Sort by time and show summary
+    sorted_rainfalls = sorted(rainfalls, key=lambda x: x.get("time", 0))
+    if sorted_rainfalls:
+        first = sorted_rainfalls[0]
+        last = sorted_rainfalls[-1]
+        first_date = datetime.fromtimestamp(first["time"] / 1000, tz=UTC).date()
+        last_date = datetime.fromtimestamp(last["time"] / 1000, tz=UTC).date()
+        print(f"Date range: {first_date} to {last_date}")
+
+    print("\nNOTE: AgriWebb API does not support deleting rainfall records.")
+    print("To delete records, use the AgriWebb web interface.")
 
 
 async def cmd_cache(args: argparse.Namespace) -> None:
     """Download weather data from both Open-Meteo and NOAA to local cache."""
-    refresh = getattr(args, 'refresh', False)
+    refresh = getattr(args, "refresh", False)
 
     print("=" * 60)
     print("Weather Data Cache" + (" (refresh)" if refresh else ""))
@@ -92,8 +157,6 @@ async def cmd_cache(args: argparse.Namespace) -> None:
 async def update_noaa_cache(refresh: bool = False) -> None:
     """Update NOAA weather cache smartly."""
     import json
-
-    from agriwebb.core import get_cache_dir
 
     cache_path = get_cache_dir() / "noaa_weather.json"
     end_date = date.today() - timedelta(days=1)
@@ -123,7 +186,7 @@ async def update_noaa_cache(refresh: bool = False) -> None:
         print(f"  Fetching updates ({start_date} to {end_date})...")
 
     try:
-        noaa_data = await fetch_ncei_date_range(start_date, end_date)
+        noaa_data = await ncei.fetch_ncei_date_range(start_date, end_date)
         if noaa_data:
             if not refresh and existing_dates:
                 # Merge with existing
@@ -135,7 +198,7 @@ async def update_noaa_cache(refresh: bool = False) -> None:
                     existing_records[record["date"]] = record
                 noaa_data = sorted(existing_records.values(), key=lambda x: x["date"])
 
-            save_weather_json(noaa_data, "noaa_weather.json")
+            ncei.save_weather_json(noaa_data, "noaa_weather.json")
             print(f"  Cached {len(noaa_data)} days from NOAA")
         else:
             print("  No NOAA data available")
@@ -165,36 +228,21 @@ Examples:
 
     # forecast - Show forecast
     forecast_parser = subparsers.add_parser("forecast", help="Show weather forecast")
-    forecast_parser.add_argument(
-        "--days", type=int, default=7, help="Number of forecast days (default: 7)"
-    )
+    forecast_parser.add_argument("--days", type=int, default=7, help="Number of forecast days (default: 7)")
 
     # list - List AgriWebb rainfall records
     subparsers.add_parser("list", help="List rainfall records in AgriWebb")
 
     # sync - Sync rainfall to AgriWebb
-    sync_parser = subparsers.add_parser(
-        "sync", help="Sync rainfall data to AgriWebb"
-    )
-    sync_parser.add_argument(
-        "--days", type=int, help="Number of days to sync"
-    )
-    sync_parser.add_argument(
-        "--months", type=int, help="Number of months to sync"
-    )
-    sync_parser.add_argument(
-        "--years", type=int, help="Number of years to sync"
-    )
-    sync_parser.add_argument(
-        "--dry-run", action="store_true", help="Preview without pushing to AgriWebb"
-    )
+    sync_parser = subparsers.add_parser("sync", help="Sync rainfall data to AgriWebb")
+    sync_parser.add_argument("--days", type=int, help="Number of days to sync")
+    sync_parser.add_argument("--months", type=int, help="Number of months to sync")
+    sync_parser.add_argument("--years", type=int, help="Number of years to sync")
+    sync_parser.add_argument("--dry-run", action="store_true", help="Preview without pushing to AgriWebb")
 
     # cache - Download weather data
     cache_parser = subparsers.add_parser("cache", help="Download weather data to local cache")
-    cache_parser.add_argument(
-        "--refresh", action="store_true",
-        help="Force full re-fetch, ignoring existing cache"
-    )
+    cache_parser.add_argument("--refresh", action="store_true", help="Force full re-fetch, ignoring existing cache")
 
     args = parser.parse_args()
 

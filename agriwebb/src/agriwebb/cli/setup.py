@@ -7,6 +7,7 @@ import httpx
 
 from agriwebb.core import client
 from agriwebb.core.config import settings
+from agriwebb.weather import api as weather_api
 from agriwebb.weather.ncei import NCEI_API_URL
 
 
@@ -130,6 +131,7 @@ async def test_gee_connection() -> bool:
 
     try:
         import ee
+
         ee.Initialize(project=settings.gee_project_id)
         # Simple test - get a known image
         ee.Image("USGS/SRTMGL1_003").getInfo()
@@ -181,7 +183,7 @@ async def setup_rain_gauge(station_name: str | None, farm: dict | None) -> str |
             print()
             return None
 
-        sensor_id = await client.create_rain_gauge(gauge_name, lat, lng)
+        sensor_id = await weather_api.create_rain_gauge(gauge_name, lat, lng)
         print("  [OK] Rain gauge created!")
         print()
         print("  Add to your .env file:")

@@ -27,6 +27,7 @@ DEFAULT_LON = -123.042906
 
 class DailyWeather(TypedDict):
     """Daily weather record."""
+
     date: str
     temp_mean_c: float
     temp_max_c: float
@@ -37,6 +38,7 @@ class DailyWeather(TypedDict):
 
 class WeatherData(TypedDict):
     """Complete weather data structure."""
+
     location: dict
     fetched_at: str
     daily_records: int
@@ -91,14 +93,16 @@ async def fetch_historical(
 
     results = []
     for i, d in enumerate(dates):
-        results.append(DailyWeather(
-            date=d,
-            temp_mean_c=temp_mean[i] if temp_mean[i] is not None else 0,
-            temp_max_c=temp_max[i] if temp_max[i] is not None else 0,
-            temp_min_c=temp_min[i] if temp_min[i] is not None else 0,
-            precip_mm=precip[i] if precip[i] is not None else 0,
-            et0_mm=et0[i] if et0[i] is not None else 0,
-        ))
+        results.append(
+            DailyWeather(
+                date=d,
+                temp_mean_c=temp_mean[i] if temp_mean[i] is not None else 0,
+                temp_max_c=temp_max[i] if temp_max[i] is not None else 0,
+                temp_min_c=temp_min[i] if temp_min[i] is not None else 0,
+                precip_mm=precip[i] if precip[i] is not None else 0,
+                et0_mm=et0[i] if et0[i] is not None else 0,
+            )
+        )
 
     return results
 
@@ -151,14 +155,16 @@ async def fetch_forecast(
     for i, d in enumerate(dates):
         t_max = temp_max[i] if temp_max[i] is not None else 0
         t_min = temp_min[i] if temp_min[i] is not None else 0
-        results.append(DailyWeather(
-            date=d,
-            temp_mean_c=round((t_max + t_min) / 2, 1),
-            temp_max_c=t_max,
-            temp_min_c=t_min,
-            precip_mm=precip[i] if precip[i] is not None else 0,
-            et0_mm=et0[i] if et0[i] is not None else 0,
-        ))
+        results.append(
+            DailyWeather(
+                date=d,
+                temp_mean_c=round((t_max + t_min) / 2, 1),
+                temp_max_c=t_max,
+                temp_min_c=t_min,
+                precip_mm=precip[i] if precip[i] is not None else 0,
+                et0_mm=et0[i] if et0[i] is not None else 0,
+            )
+        )
 
     return results
 
@@ -266,11 +272,7 @@ async def update_weather_cache(
         archive_end = today - timedelta(days=5)
         if latest_date < archive_end:
             print(f"Fetching historical data from {latest_date + timedelta(days=1)} to {archive_end}...")
-            new_historical = await fetch_historical(
-                latest_date + timedelta(days=1),
-                archive_end,
-                lat, lon
-            )
+            new_historical = await fetch_historical(latest_date + timedelta(days=1), archive_end, lat, lon)
             # Merge new historical data
             for record in new_historical:
                 if record["date"] not in existing_dates:
@@ -386,10 +388,7 @@ async def get_weather_range(
     start_str = start_date.isoformat()
     end_str = end_date.isoformat()
 
-    return [
-        record for record in cached["daily_data"]
-        if start_str <= record["date"] <= end_str
-    ]
+    return [record for record in cached["daily_data"] if start_str <= record["date"] <= end_str]
 
 
 # CLI interface
@@ -424,21 +423,25 @@ async def main():
         print(f"{'Date':<12} {'Temp':<10} {'Precip':<10} {'ET0':<8}")
         print("-" * 42)
         for day in forecast:
-            print(f"{day['date']:<12} {day['temp_min_c']:.0f}-{day['temp_max_c']:.0f}°C    "
-                  f"{day['precip_mm']:.1f} mm    {day['et0_mm']:.1f} mm")
+            print(
+                f"{day['date']:<12} {day['temp_min_c']:.0f}-{day['temp_max_c']:.0f}°C    "
+                f"{day['precip_mm']:.1f} mm    {day['et0_mm']:.1f} mm"
+            )
         return
 
     # Default: show recent days
     cached = load_cached_weather()
     if cached:
-        recent = cached["daily_data"][-args.recent:]
+        recent = cached["daily_data"][-args.recent :]
         print(f"\nRecent {len(recent)} days:")
         print(f"{'Date':<12} {'Mean':<8} {'Range':<12} {'Precip':<10} {'ET0':<8}")
         print("-" * 52)
         for day in recent:
-            print(f"{day['date']:<12} {day['temp_mean_c']:>5.1f}°C  "
-                  f"{day['temp_min_c']:.0f}-{day['temp_max_c']:.0f}°C    "
-                  f"{day['precip_mm']:>5.1f} mm   {day['et0_mm']:>5.2f} mm")
+            print(
+                f"{day['date']:<12} {day['temp_mean_c']:>5.1f}°C  "
+                f"{day['temp_min_c']:.0f}-{day['temp_max_c']:.0f}°C    "
+                f"{day['precip_mm']:>5.1f} mm   {day['et0_mm']:>5.2f} mm"
+            )
     else:
         print("No cached weather data. Run with --update to fetch.")
 
@@ -446,6 +449,7 @@ async def main():
 def cli():
     """Entry point for CLI."""
     import asyncio
+
     asyncio.run(main())
 
 

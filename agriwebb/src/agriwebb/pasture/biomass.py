@@ -288,9 +288,7 @@ def calculate_grazing_correction(
 
     # Base exponential decay model
     # correction = base * exp(-decay * pressure)
-    correction = GRAZING_BASE_CORRECTION * math.exp(
-        -GRAZING_DECAY_RATE * grazing_pressure_kg_ha_day
-    )
+    correction = GRAZING_BASE_CORRECTION * math.exp(-GRAZING_DECAY_RATE * grazing_pressure_kg_ha_day)
 
     # If paddock has been rested, allow partial recovery toward base
     if days_since_rest is not None and days_since_rest > 0 and grazing_pressure_kg_ha_day == 0:

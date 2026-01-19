@@ -66,14 +66,17 @@ class TestGetAnimals:
     async def test_returns_animal_list(self, mock_agriwebb):
         """Verify animals are returned."""
         mock_agriwebb.post("/v2").mock(
-            return_value=httpx.Response(200, json={
-                "data": {
-                    "animals": [
-                        make_animal("a1", "001", breed="Angus"),
-                        make_animal("a2", "002", breed="Hereford"),
-                    ]
-                }
-            })
+            return_value=httpx.Response(
+                200,
+                json={
+                    "data": {
+                        "animals": [
+                            make_animal("a1", "001", breed="Angus"),
+                            make_animal("a2", "002", breed="Hereford"),
+                        ]
+                    }
+                },
+            )
         )
 
         result = await livestock.get_animals()
@@ -83,9 +86,7 @@ class TestGetAnimals:
 
     async def test_filters_by_status(self, mock_agriwebb):
         """Verify status filter is applied."""
-        route = mock_agriwebb.post("/v2").mock(
-            return_value=httpx.Response(200, json={"data": {"animals": []}})
-        )
+        route = mock_agriwebb.post("/v2").mock(return_value=httpx.Response(200, json={"data": {"animals": []}}))
 
         await livestock.get_animals(status="onFarm")
 
@@ -94,9 +95,7 @@ class TestGetAnimals:
 
     async def test_raises_on_error(self, mock_agriwebb):
         """Verify error raised on GraphQL errors."""
-        mock_agriwebb.post("/v2").mock(
-            return_value=httpx.Response(200, json={"errors": [{"message": "Failed"}]})
-        )
+        mock_agriwebb.post("/v2").mock(return_value=httpx.Response(200, json={"errors": [{"message": "Failed"}]}))
 
         with pytest.raises(ValueError, match="GraphQL errors"):
             await livestock.get_animals()
@@ -112,9 +111,7 @@ class TestFindAnimal:
         mock_agriwebb.post("/v2").mock(
             side_effect=[
                 httpx.Response(200, json={"data": {"animals": []}}),  # by animalId
-                httpx.Response(200, json={
-                    "data": {"animals": [make_animal("a1", "001")]}
-                }),  # by name
+                httpx.Response(200, json={"data": {"animals": [make_animal("a1", "001")]}}),  # by name
             ]
         )
 
@@ -123,9 +120,7 @@ class TestFindAnimal:
 
     async def test_raises_when_not_found(self, mock_agriwebb):
         """Verify error when no match."""
-        mock_agriwebb.post("/v2").mock(
-            return_value=httpx.Response(200, json={"data": {"animals": []}})
-        )
+        mock_agriwebb.post("/v2").mock(return_value=httpx.Response(200, json={"data": {"animals": []}}))
 
         with pytest.raises(ValueError, match="No animal found"):
             await livestock.find_animal("missing")
@@ -136,12 +131,17 @@ class TestFindAnimal:
         mock_agriwebb.post("/v2").mock(
             side_effect=[
                 httpx.Response(200, json={"data": {"animals": []}}),  # by animalId
-                httpx.Response(200, json={
-                    "data": {"animals": [
-                        make_animal("a1", "001"),
-                        make_animal("a2", "002"),
-                    ]}
-                }),  # by name - multiple matches
+                httpx.Response(
+                    200,
+                    json={
+                        "data": {
+                            "animals": [
+                                make_animal("a1", "001"),
+                                make_animal("a2", "002"),
+                            ]
+                        }
+                    },
+                ),  # by name - multiple matches
             ]
         )
 
@@ -156,15 +156,21 @@ class TestGetAnimal:
         """Verify single animal is returned."""
         # First query by animalId returns the animal
         mock_agriwebb.post("/v2").mock(
-            return_value=httpx.Response(200, json={
-                "data": {
-                    "animals": [make_animal(
-                        "a1", "001",
-                        breed="Angus",
-                        sex="FEMALE",
-                    )]
-                }
-            })
+            return_value=httpx.Response(
+                200,
+                json={
+                    "data": {
+                        "animals": [
+                            make_animal(
+                                "a1",
+                                "001",
+                                breed="Angus",
+                                sex="FEMALE",
+                            )
+                        ]
+                    }
+                },
+            )
         )
 
         result = await livestock.get_animal("a1")
@@ -174,9 +180,7 @@ class TestGetAnimal:
 
     async def test_raises_when_not_found(self, mock_agriwebb):
         """Verify error raised when animal not found."""
-        mock_agriwebb.post("/v2").mock(
-            return_value=httpx.Response(200, json={"data": {"animals": []}})
-        )
+        mock_agriwebb.post("/v2").mock(return_value=httpx.Response(200, json={"data": {"animals": []}}))
 
         with pytest.raises(ValueError, match="No animal found"):
             await livestock.get_animal("missing")
@@ -192,21 +196,25 @@ class TestGetAnimalLineage:
         mock_agriwebb.post("/v2").mock(
             side_effect=[
                 # First: find animal by ID
-                httpx.Response(200, json={
-                    "data": {"animals": [make_animal(
-                        "a1", "001",
-                        sires=[make_parent("s1", "S001")],
-                        dams=[make_parent("d1", "D001")],
-                    )]}
-                }),
+                httpx.Response(
+                    200,
+                    json={
+                        "data": {
+                            "animals": [
+                                make_animal(
+                                    "a1",
+                                    "001",
+                                    sires=[make_parent("s1", "S001")],
+                                    dams=[make_parent("d1", "D001")],
+                                )
+                            ]
+                        }
+                    },
+                ),
                 # Second: fetch sire by ID
-                httpx.Response(200, json={
-                    "data": {"animals": [make_animal("s1", "S001", breed="Angus Sire")]}
-                }),
+                httpx.Response(200, json={"data": {"animals": [make_animal("s1", "S001", breed="Angus Sire")]}}),
                 # Third: fetch dam by ID
-                httpx.Response(200, json={
-                    "data": {"animals": [make_animal("d1", "D001", breed="Angus Dam")]}
-                }),
+                httpx.Response(200, json={"data": {"animals": [make_animal("d1", "D001", breed="Angus Dam")]}}),
             ]
         )
 
@@ -224,17 +232,20 @@ class TestGetOffspring:
         mock_agriwebb.post("/v2").mock(
             side_effect=[
                 # First call: find_animal (resolve_animal_id)
-                httpx.Response(200, json={
-                    "data": {"animals": [make_animal("parent-id", "P01")]}
-                }),
+                httpx.Response(200, json={"data": {"animals": [make_animal("parent-id", "P01")]}}),
                 # Second call: get all animals to filter for offspring
-                httpx.Response(200, json={
-                    "data": {"animals": [
-                        make_animal("o1", "O01", sires=[make_parent("parent-id", "P01")]),
-                        make_animal("o2", "O02", dams=[make_parent("parent-id", "P01")]),
-                        make_animal("other", "X01"),  # not offspring
-                    ]}
-                }),
+                httpx.Response(
+                    200,
+                    json={
+                        "data": {
+                            "animals": [
+                                make_animal("o1", "O01", sires=[make_parent("parent-id", "P01")]),
+                                make_animal("o2", "O02", dams=[make_parent("parent-id", "P01")]),
+                                make_animal("other", "X01"),  # not offspring
+                            ]
+                        }
+                    },
+                ),
             ]
         )
 
@@ -248,15 +259,18 @@ class TestGetOffspring:
         mock_agriwebb.post("/v2").mock(
             side_effect=[
                 # First call: find_animal (resolve_animal_id)
-                httpx.Response(200, json={
-                    "data": {"animals": [make_animal("parent-id", "P01")]}
-                }),
+                httpx.Response(200, json={"data": {"animals": [make_animal("parent-id", "P01")]}}),
                 # Second call: get all animals - offspring appears as both sire and dam offspring
-                httpx.Response(200, json={
-                    "data": {"animals": [
-                        make_animal("o1", "O01", sires=[parent], dams=[parent]),
-                    ]}
-                }),
+                httpx.Response(
+                    200,
+                    json={
+                        "data": {
+                            "animals": [
+                                make_animal("o1", "O01", sires=[parent], dams=[parent]),
+                            ]
+                        }
+                    },
+                ),
             ]
         )
 
@@ -271,14 +285,17 @@ class TestGetMobs:
     async def test_returns_mob_list(self, mock_agriwebb):
         """Verify mobs are returned."""
         mock_agriwebb.post("/v2").mock(
-            return_value=httpx.Response(200, json={
-                "data": {
-                    "managementGroups": [
-                        {"id": "m1", "name": "Herd A", "animalCount": 25},
-                        {"id": "m2", "name": "Herd B", "animalCount": 30},
-                    ]
-                }
-            })
+            return_value=httpx.Response(
+                200,
+                json={
+                    "data": {
+                        "managementGroups": [
+                            {"id": "m1", "name": "Herd A", "animalCount": 25},
+                            {"id": "m2", "name": "Herd B", "animalCount": 30},
+                        ]
+                    }
+                },
+            )
         )
 
         result = await livestock.get_mobs()

@@ -18,7 +18,8 @@ import argparse
 import asyncio
 from datetime import date, timedelta
 
-from agriwebb.core import add_pasture_growth_rates_batch, get_fields, settings
+from agriwebb.core import get_fields, settings
+from agriwebb.pasture import add_pasture_growth_rates_batch
 from agriwebb.pasture.biomass import EXPECTED_UNCERTAINTY, calculate_growth_rate
 from agriwebb.satellite import gee as satellite
 
@@ -105,9 +106,7 @@ async def main(
         if not p.get("geometry"):
             continue
         try:
-            result = satellite.extract_paddock_ndvi(
-                p, previous_start.isoformat(), previous_end.isoformat(), scale=30
-            )
+            result = satellite.extract_paddock_ndvi(p, previous_start.isoformat(), previous_end.isoformat(), scale=30)
             if result["ndvi_mean"] is not None:
                 previous_ndvi[p["id"]] = result["ndvi_mean"]
         except Exception as e:
@@ -121,9 +120,7 @@ async def main(
         if not p.get("geometry"):
             continue
         try:
-            result = satellite.extract_paddock_ndvi(
-                p, current_start.isoformat(), current_end.isoformat(), scale=30
-            )
+            result = satellite.extract_paddock_ndvi(p, current_start.isoformat(), current_end.isoformat(), scale=30)
             if result["ndvi_mean"] is not None:
                 current_ndvi[p["id"]] = result["ndvi_mean"]
         except Exception as e:
@@ -154,7 +151,8 @@ async def main(
         ndvi_curr = current_ndvi[pid]
 
         growth_rate, _ = calculate_growth_rate(
-            ndvi_curr, ndvi_prev,
+            ndvi_curr,
+            ndvi_prev,
             days_between=window_size,
             month_current=current_month,
             month_previous=previous_month,
@@ -162,14 +160,16 @@ async def main(
 
         print(f"{name:<30} {ndvi_prev:>10.3f} {ndvi_curr:>10.3f} {growth_rate:>+10.1f} kg")
 
-        records.append({
-            "field_id": pid,
-            "field_name": name,
-            "growth_rate": growth_rate,
-            "record_date": current_end,
-            "ndvi_prev": ndvi_prev,
-            "ndvi_curr": ndvi_curr,
-        })
+        records.append(
+            {
+                "field_id": pid,
+                "field_name": name,
+                "growth_rate": growth_rate,
+                "record_date": current_end,
+                "ndvi_prev": ndvi_prev,
+                "ndvi_curr": ndvi_curr,
+            }
+        )
 
     print()
     print(f"Calculated growth rates for {len(records)} paddocks")
@@ -198,14 +198,16 @@ async def main(
     print("Pushing growth rates to AgriWebb...")
 
     try:
-        result = await add_pasture_growth_rates_batch([
-            {
-                "field_id": r["field_id"],
-                "growth_rate": r["growth_rate"],
-                "record_date": r["record_date"],
-            }
-            for r in records
-        ])
+        result = await add_pasture_growth_rates_batch(
+            [
+                {
+                    "field_id": r["field_id"],
+                    "growth_rate": r["growth_rate"],
+                    "record_date": r["record_date"],
+                }
+                for r in records
+            ]
+        )
 
         rates_data = result.get("data", {}).get("addPastureGrowthRates", {})
         growth_rates = rates_data.get("pastureGrowthRates", [])
@@ -236,11 +238,13 @@ def cli():
     )
     args = parser.parse_args()
 
-    asyncio.run(main(
-        dry_run=args.dry_run,
-        window_size=args.window,
-        adaptive=args.adaptive,
-    ))
+    asyncio.run(
+        main(
+            dry_run=args.dry_run,
+            window_size=args.window,
+            adaptive=args.adaptive,
+        )
+    )
 
 
 if __name__ == "__main__":

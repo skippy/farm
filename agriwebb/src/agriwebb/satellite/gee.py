@@ -12,6 +12,7 @@ import ee
 
 class PaddockNDVI(TypedDict):
     """NDVI result for a single paddock."""
+
     paddock_id: str
     paddock_name: str
     date_start: str
@@ -127,9 +128,7 @@ def _mask_clouds_hls(image: ee.Image) -> ee.Image:
     shadow_bit = 1 << 3  # 8
 
     # Mask where neither cloud nor shadow bits are set
-    clear_mask = fmask.bitwiseAnd(cloud_bit).eq(0).And(
-        fmask.bitwiseAnd(shadow_bit).eq(0)
-    )
+    clear_mask = fmask.bitwiseAnd(cloud_bit).eq(0).And(fmask.bitwiseAnd(shadow_bit).eq(0))
 
     return image.updateMask(clear_mask)
 
@@ -234,17 +233,9 @@ def _get_hls_collection(
         Merged, cloud-masked, NDVI-computed image collection
     """
     # Load both HLS collections
-    hls_l30 = (
-        ee.ImageCollection(HLS_L30)
-        .filterBounds(geometry)
-        .filterDate(start_date, end_date)
-    )
+    hls_l30 = ee.ImageCollection(HLS_L30).filterBounds(geometry).filterDate(start_date, end_date)
 
-    hls_s30 = (
-        ee.ImageCollection(HLS_S30)
-        .filterBounds(geometry)
-        .filterDate(start_date, end_date)
-    )
+    hls_s30 = ee.ImageCollection(HLS_S30).filterBounds(geometry).filterDate(start_date, end_date)
 
     # Merge collections
     merged = hls_l30.merge(hls_s30)
