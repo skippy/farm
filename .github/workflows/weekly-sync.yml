@@ -71,6 +71,7 @@ jobs:
           AGRIWEBB_FARM_ID: ${{ secrets.AGRIWEBB_FARM_ID }}
           AGRIWEBB_WEATHER_SENSOR_ID: ${{ secrets.AGRIWEBB_WEATHER_SENSOR_ID }}
           GEE_PROJECT_ID: ${{ secrets.GEE_PROJECT_ID }}
+          GEE_SERVICE_ACCOUNT_KEY: ${{ secrets.GEE_SERVICE_ACCOUNT_KEY }}
         run: |
           mkdir -p .cache
           if [ "${{ inputs.dry_run }}" = "true" ]; then
