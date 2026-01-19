@@ -27,6 +27,7 @@ from agriwebb.pasture.growth import (
 
 class MonthlyStats(TypedDict):
     """Monthly growth statistics."""
+
     month: int
     month_name: str
     years_of_data: int
@@ -40,6 +41,7 @@ class MonthlyStats(TypedDict):
 
 class YearlyComparison(TypedDict):
     """Year-over-year comparison."""
+
     year: int
     month: int
     avg_growth_kg_ha_day: float
@@ -94,12 +96,14 @@ def get_monthly_averages(weather_data: list[dict]) -> dict[int, MonthlyStats]:
     growth_by_date = calculate_historical_growth(weather_data)
 
     # Group by month
-    monthly_data: dict[int, dict] = defaultdict(lambda: {
-        "growth_rates": [],
-        "temps": [],
-        "precip": [],
-        "years": set(),
-    })
+    monthly_data: dict[int, dict] = defaultdict(
+        lambda: {
+            "growth_rates": [],
+            "temps": [],
+            "precip": [],
+            "years": set(),
+        }
+    )
 
     for day in weather_data:
         d = date.fromisoformat(day["date"])
@@ -115,8 +119,19 @@ def get_monthly_averages(weather_data: list[dict]) -> dict[int, MonthlyStats]:
 
     # Calculate statistics
     month_names = [
-        "", "January", "February", "March", "April", "May", "June",
-        "July", "August", "September", "October", "November", "December"
+        "",
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
     ]
 
     results = {}
@@ -133,7 +148,7 @@ def get_monthly_averages(weather_data: list[dict]) -> dict[int, MonthlyStats]:
 
         # Standard deviation
         variance = sum((r - avg) ** 2 for r in rates) / len(rates)
-        std_dev = variance ** 0.5
+        std_dev = variance**0.5
 
         results[month] = MonthlyStats(
             month=month,
@@ -168,10 +183,7 @@ def get_yearly_by_month(weather_data: list[dict]) -> dict[tuple[int, int], float
         year_month_data[key].append(growth)
 
     # Calculate averages
-    return {
-        key: sum(rates) / len(rates)
-        for key, rates in year_month_data.items()
-    }
+    return {key: sum(rates) / len(rates) for key, rates in year_month_data.items()}
 
 
 def compare_to_historical(
@@ -278,9 +290,9 @@ def get_trend_analysis(weather_data: list[dict]) -> dict:
         sum_x = sum(years)
         sum_y = sum(yearly_avgs[y] for y in years)
         sum_xy = sum(y * yearly_avgs[y] for y in years)
-        sum_x2 = sum(y ** 2 for y in years)
+        sum_x2 = sum(y**2 for y in years)
 
-        slope = (n * sum_xy - sum_x * sum_y) / (n * sum_x2 - sum_x ** 2)
+        slope = (n * sum_xy - sum_x * sum_y) / (n * sum_x2 - sum_x**2)
         trend = "increasing" if slope > 0.1 else "decreasing" if slope < -0.1 else "stable"
     else:
         slope = 0

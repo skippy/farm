@@ -3,9 +3,15 @@
 This module provides:
 - Weather-driven pasture growth models (growth.py)
 - NDVI-to-biomass conversion models (biomass.py)
+- AgriWebb API functions for pasture data (api.py)
 - Unified CLI for pasture operations (cli.py)
 """
 
+from agriwebb.pasture.api import (
+    add_feed_on_offer_batch,
+    add_pasture_growth_rates_batch,
+    add_standing_dry_matter_batch,
+)
 from agriwebb.pasture.biomass import (
     EXPECTED_UNCERTAINTY,
     Season,
@@ -28,6 +34,10 @@ from agriwebb.pasture.growth import (
 )
 
 __all__ = [
+    # AgriWebb API
+    "add_pasture_growth_rates_batch",
+    "add_feed_on_offer_batch",
+    "add_standing_dry_matter_batch",
     # growth
     "calculate_daily_growth",
     "calculate_farm_growth",

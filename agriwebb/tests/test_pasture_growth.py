@@ -1,30 +1,31 @@
 """Tests for pasture growth model."""
 
+from datetime import date
+
 import pytest
-from datetime import date, timedelta
 
 from agriwebb.pasture.growth import (
+    MOISTURE_OPTIMAL,
+    MOISTURE_STRESS_POINT,
+    MOISTURE_WATERLOG,
+    MOISTURE_WILTING_POINT,
+    SEASONAL_MAX_GROWTH,
     # Constants
     TEMP_BASE,
-    TEMP_OPT_LOW,
-    TEMP_OPT_HIGH,
     TEMP_MAX,
-    SEASONAL_MAX_GROWTH,
-    MOISTURE_WILTING_POINT,
-    MOISTURE_STRESS_POINT,
-    MOISTURE_OPTIMAL,
-    MOISTURE_WATERLOG,
-    # Functions
-    get_season,
-    temperature_factor,
-    moisture_factor,
-    soil_quality_factor,
-    calculate_daily_growth,
-    summarize_growth,
+    TEMP_OPT_HIGH,
+    TEMP_OPT_LOW,
+    PaddockGrowthModel,
     # Classes
     Season,
     SoilWaterState,
-    PaddockGrowthModel,
+    calculate_daily_growth,
+    # Functions
+    get_season,
+    moisture_factor,
+    soil_quality_factor,
+    summarize_growth,
+    temperature_factor,
 )
 
 
@@ -332,7 +333,7 @@ class TestPaddockGrowthModel:
                 "awc_cm_cm": 0.15,
                 "drainage": "Well drained",
                 "organic_matter_pct": 4.5,
-            }
+            },
         }
         model = PaddockGrowthModel.from_paddock_data(paddock, soil)
         assert model.paddock_name == "Test Paddock"
@@ -399,8 +400,6 @@ class TestSeasonalGrowthPatterns:
 
     def test_spring_growth_highest(self):
         """Spring produces highest growth rates."""
-        soil = SoilWaterState(awc_mm=50, current_mm=35)
-
         spring = calculate_daily_growth(
             d=date(2024, 4, 15),
             temp_mean_c=15,

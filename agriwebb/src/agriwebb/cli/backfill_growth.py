@@ -15,8 +15,9 @@ import asyncio
 import json
 from datetime import date, timedelta
 
-from agriwebb.core import add_pasture_growth_rates_batch, get_cache_dir
+from agriwebb.core import get_cache_dir
 from agriwebb.data.historical import load_weather_history
+from agriwebb.pasture import add_pasture_growth_rates_batch
 from agriwebb.pasture.growth import calculate_farm_growth, load_paddock_soils
 
 
@@ -102,12 +103,14 @@ async def backfill_growth(
 
         field_id = field_ids[paddock_name]
         for day_result in daily_results:
-            all_records.append({
-                "field_id": field_id,
-                "field_name": paddock_name,
-                "growth_rate": day_result["growth_kg_ha_day"],
-                "record_date": day_result["date"],
-            })
+            all_records.append(
+                {
+                    "field_id": field_id,
+                    "field_name": paddock_name,
+                    "growth_rate": day_result["growth_kg_ha_day"],
+                    "record_date": day_result["date"],
+                }
+            )
 
     print(f"  Generated {len(all_records)} records for {len(field_ids)} paddocks")
 
@@ -153,19 +156,21 @@ async def backfill_growth(
     errors = []
 
     for i in range(0, len(all_records), batch_size):
-        batch = all_records[i:i + batch_size]
+        batch = all_records[i : i + batch_size]
         batch_start = batch[0]["record_date"]
         batch_end = batch[-1]["record_date"]
 
         try:
-            await add_pasture_growth_rates_batch([
-                {
-                    "field_id": r["field_id"],
-                    "growth_rate": r["growth_rate"],
-                    "record_date": r["record_date"],
-                }
-                for r in batch
-            ])
+            await add_pasture_growth_rates_batch(
+                [
+                    {
+                        "field_id": r["field_id"],
+                        "growth_rate": r["growth_rate"],
+                        "record_date": r["record_date"],
+                    }
+                    for r in batch
+                ]
+            )
             total_pushed += len(batch)
             print(f"  Pushed batch {i // batch_size + 1}: {batch_start} to {batch_end} ({len(batch)} records)")
         except Exception as e:
@@ -189,9 +194,7 @@ async def backfill_growth(
 
 
 async def main():
-    parser = argparse.ArgumentParser(
-        description="Backfill historical pasture growth data to AgriWebb"
-    )
+    parser = argparse.ArgumentParser(description="Backfill historical pasture growth data to AgriWebb")
     parser.add_argument(
         "--start",
         type=str,

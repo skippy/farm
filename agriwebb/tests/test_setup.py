@@ -69,9 +69,7 @@ class TestNceiConnection:
     async def test_returns_station_name_on_success(self, mock_ncei):
         """Verify station name is returned from API."""
         mock_ncei.get("/access/services/data/v1").mock(
-            return_value=httpx.Response(200, json=[
-                {"NAME": "FRIDAY HARBOR AIRPORT, WA US", "STATION": "USW00094276"}
-            ])
+            return_value=httpx.Response(200, json=[{"NAME": "FRIDAY HARBOR AIRPORT, WA US", "STATION": "USW00094276"}])
         )
 
         result = await setup.test_ncei_connection()
@@ -80,9 +78,7 @@ class TestNceiConnection:
 
     async def test_returns_none_on_empty_response(self, mock_ncei):
         """Verify None returned when no data."""
-        mock_ncei.get("/access/services/data/v1").mock(
-            return_value=httpx.Response(200, json=[])
-        )
+        mock_ncei.get("/access/services/data/v1").mock(return_value=httpx.Response(200, json=[]))
 
         result = await setup.test_ncei_connection()
 
@@ -90,9 +86,7 @@ class TestNceiConnection:
 
     async def test_returns_none_on_error(self, mock_ncei):
         """Verify None returned on HTTP error."""
-        mock_ncei.get("/access/services/data/v1").mock(
-            return_value=httpx.Response(500)
-        )
+        mock_ncei.get("/access/services/data/v1").mock(return_value=httpx.Response(500))
 
         result = await setup.test_ncei_connection()
 

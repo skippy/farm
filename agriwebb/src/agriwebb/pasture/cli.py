@@ -10,8 +10,6 @@ import json
 from datetime import date, timedelta
 
 from agriwebb.core import (
-    add_pasture_growth_rates_batch,
-    add_standing_dry_matter_batch,
     get_cache_dir,
     get_fields,
     settings,
@@ -21,6 +19,10 @@ from agriwebb.data.historical import (
     compare_to_historical,
     get_monthly_averages,
     load_weather_history,
+)
+from agriwebb.pasture.api import (
+    add_pasture_growth_rates_batch,
+    add_standing_dry_matter_batch,
 )
 from agriwebb.pasture.biomass import ndvi_to_standing_dry_matter
 from agriwebb.pasture.growth import (
@@ -49,6 +51,7 @@ def load_fields_for_sync() -> dict[str, str]:
 # -----------------------------------------------------------------------------
 # Estimate Command (weather-driven)
 # -----------------------------------------------------------------------------
+
 
 async def estimate_current_growth(
     days_back: int = 7,
@@ -170,12 +173,14 @@ async def sync_growth_to_agriwebb(estimates: dict, dry_run: bool = False) -> dic
             print(f"  Skipping {name}: no AgriWebb field ID")
             continue
 
-        records.append({
-            "field_id": field_ids[name],
-            "field_name": name,
-            "growth_rate": data["growth_7day_avg"],
-            "record_date": data["date"],
-        })
+        records.append(
+            {
+                "field_id": field_ids[name],
+                "field_name": name,
+                "growth_rate": data["growth_7day_avg"],
+                "record_date": data["date"],
+            }
+        )
 
     if not records:
         return {"error": "No records to sync"}
@@ -187,14 +192,16 @@ async def sync_growth_to_agriwebb(estimates: dict, dry_run: bool = False) -> dic
         return {"dry_run": True, "records": len(records)}
 
     print("Pushing to AgriWebb...")
-    result = await add_pasture_growth_rates_batch([
-        {
-            "field_id": r["field_id"],
-            "growth_rate": r["growth_rate"],
-            "record_date": r["record_date"],
-        }
-        for r in records
-    ])
+    result = await add_pasture_growth_rates_batch(
+        [
+            {
+                "field_id": r["field_id"],
+                "growth_rate": r["growth_rate"],
+                "record_date": r["record_date"],
+            }
+            for r in records
+        ]
+    )
 
     return result
 
@@ -205,7 +212,7 @@ async def cmd_estimate(args: argparse.Namespace) -> None:
     print("Pasture Growth Estimate (Weather-Driven Model)")
     print("=" * 70)
 
-    days_back = getattr(args, 'days', 14)
+    days_back = getattr(args, "days", 14)
     estimates = await estimate_current_growth(
         days_back=days_back,
         include_forecast=args.forecast,
@@ -245,14 +252,7 @@ async def cmd_estimate(args: argparse.Namespace) -> None:
         else:
             status = "building"
 
-        print(
-            f"{name:<22} "
-            f"{growth:>6.1f}    "
-            f"{consumption:>6.1f}    "
-            f"{net:>+6.1f}    "
-            f"{animals:>5}    "
-            f"{status}"
-        )
+        print(f"{name:<22} {growth:>6.1f}    {consumption:>6.1f}    {net:>+6.1f}    {animals:>5}    {status}")
 
     grazed = [(n, d) for n, d in estimates["estimates"].items() if d["animal_count"] > 0]
     resting = [(n, d) for n, d in estimates["estimates"].items() if d["animal_count"] == 0]
@@ -263,7 +263,7 @@ async def cmd_estimate(args: argparse.Namespace) -> None:
 
     if grazed:
         net_changes = [d["net_change_kg_ha_day"] for _, d in grazed]
-        print(f"Grazed paddocks avg net change: {sum(net_changes)/len(net_changes):+.1f} kg/ha/day")
+        print(f"Grazed paddocks avg net change: {sum(net_changes) / len(net_changes):+.1f} kg/ha/day")
 
     growth_rates = [d["growth_7day_avg"] for d in estimates["estimates"].values()]
     if growth_rates:
@@ -281,8 +281,8 @@ async def cmd_estimate(args: argparse.Namespace) -> None:
             print(f"\n--- Historical Context ({comparison['month_name']}) ---")
             print(f"Current growth: {comparison['current_growth']:.1f} kg/ha/day")
             print(f"Historical avg: {comparison['historical_avg']:.1f} kg/ha/day ({comparison['years_of_data']} years)")
-            status = comparison['status'].upper()
-            dev, dev_pct = comparison['deviation'], comparison['deviation_pct']
+            status = comparison["status"].upper()
+            dev, dev_pct = comparison["deviation"], comparison["deviation_pct"]
             print(f"Status: {status} ({dev:+.1f} kg, {dev_pct:+.1f}%)")
     except Exception as e:
         print(f"\n(Historical comparison unavailable: {e})")
@@ -299,11 +299,7 @@ async def cmd_estimate(args: argparse.Namespace) -> None:
         )
 
         for name, data in sorted_forecast:
-            print(
-                f"{name:<25} "
-                f"{data['total_growth_kg_ha']:>12.0f} kg     "
-                f"{data['avg_growth_kg_ha_day']:>6.1f} kg"
-            )
+            print(f"{name:<25} {data['total_growth_kg_ha']:>12.0f} kg     {data['avg_growth_kg_ha_day']:>6.1f} kg")
 
     cache_path = get_cache_dir() / "growth_estimates.json"
     cache_path.parent.mkdir(parents=True, exist_ok=True)
@@ -316,14 +312,15 @@ async def cmd_estimate(args: argparse.Namespace) -> None:
 # Sync Command
 # -----------------------------------------------------------------------------
 
+
 async def sync_growth_rates(args: argparse.Namespace) -> None:
     """Sync growth rates from weather model."""
     print("=" * 70)
     print("Syncing Growth Rates (Weather Model)")
     print("=" * 70)
 
-    days_back = getattr(args, 'days', 14)
-    include_forecast = getattr(args, 'forecast', False)
+    days_back = getattr(args, "days", 14)
+    include_forecast = getattr(args, "forecast", False)
 
     estimates = await estimate_current_growth(
         days_back=days_back,
@@ -366,7 +363,7 @@ async def sync_sdm(args: argparse.Namespace) -> None:
 
     today = date.today()
     processing_lag = 7  # Satellite data is typically delayed
-    window_days = getattr(args, 'window', 14) or 14
+    window_days = getattr(args, "window", 14) or 14
 
     end_date = today - timedelta(days=processing_lag)
     start_date = end_date - timedelta(days=window_days)
@@ -391,9 +388,7 @@ async def sync_sdm(args: argparse.Namespace) -> None:
             continue
 
         try:
-            result = satellite.extract_paddock_ndvi(
-                p, start_date.isoformat(), end_date.isoformat(), scale=30
-            )
+            result = satellite.extract_paddock_ndvi(p, start_date.isoformat(), end_date.isoformat(), scale=30)
             ndvi = result.get("ndvi_mean")
 
             if ndvi is None:
@@ -403,13 +398,15 @@ async def sync_sdm(args: argparse.Namespace) -> None:
             sdm, model = ndvi_to_standing_dry_matter(ndvi, month=current_month)
             print(f"{name:<30} {ndvi:>8.3f} {sdm:>10.0f}")
 
-            records.append({
-                "field_id": pid,
-                "field_name": name,
-                "sdm_kg_ha": sdm,
-                "ndvi": ndvi,
-                "record_date": end_date,
-            })
+            records.append(
+                {
+                    "field_id": pid,
+                    "field_name": name,
+                    "sdm_kg_ha": sdm,
+                    "ndvi": ndvi,
+                    "record_date": end_date,
+                }
+            )
 
         except Exception as e:
             print(f"{name:<30} {'error':>8} {str(e)[:12]:>12}")
@@ -436,14 +433,16 @@ async def sync_sdm(args: argparse.Namespace) -> None:
     print("Pushing SDM to AgriWebb...")
 
     try:
-        result = await add_standing_dry_matter_batch([
-            {
-                "field_id": r["field_id"],
-                "sdm_kg_ha": r["sdm_kg_ha"],
-                "record_date": r["record_date"],
-            }
-            for r in records
-        ])
+        result = await add_standing_dry_matter_batch(
+            [
+                {
+                    "field_id": r["field_id"],
+                    "sdm_kg_ha": r["sdm_kg_ha"],
+                    "record_date": r["record_date"],
+                }
+                for r in records
+            ]
+        )
 
         sdm_data = result.get("data", {}).get("addTotalStandingDryMatters", {})
         sdm_records = sdm_data.get("totalStandingDryMatters", [])
@@ -456,8 +455,8 @@ async def sync_sdm(args: argparse.Namespace) -> None:
 
 async def cmd_sync(args: argparse.Namespace) -> None:
     """Sync pasture data to AgriWebb."""
-    sync_growth = getattr(args, 'growth_rate', False)
-    sync_standing = getattr(args, 'sdm', False)
+    sync_growth = getattr(args, "growth_rate", False)
+    sync_standing = getattr(args, "sdm", False)
 
     if not sync_growth and not sync_standing:
         print("Error: Must specify --growth-rate, --sdm, or both")
@@ -475,6 +474,7 @@ async def cmd_sync(args: argparse.Namespace) -> None:
 # -----------------------------------------------------------------------------
 # Cache Command
 # -----------------------------------------------------------------------------
+
 
 async def update_noaa_cache_smart(refresh: bool = False) -> None:
     """Update NOAA weather cache smartly (only fetch missing data)."""
@@ -611,7 +611,7 @@ async def update_ndvi_cache_smart(refresh: bool = False) -> None:
 
 async def cmd_cache(args: argparse.Namespace) -> None:
     """Download weather, soil, and satellite data for pasture analysis."""
-    refresh = getattr(args, 'refresh', False)
+    refresh = getattr(args, "refresh", False)
 
     print("=" * 70)
     print("Pasture Data Cache" + (" (refresh)" if refresh else ""))
@@ -643,6 +643,7 @@ async def cmd_cache(args: argparse.Namespace) -> None:
     print("-" * 70)
     try:
         from agriwebb.data.soils import fetch_all_paddock_soils
+
         await fetch_all_paddock_soils()
     except Exception as e:
         print(f"Warning: Could not fetch soil data: {e}")
@@ -667,6 +668,7 @@ async def cmd_cache(args: argparse.Namespace) -> None:
 # CLI Entry Point
 # -----------------------------------------------------------------------------
 
+
 async def cli_main() -> None:
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -686,50 +688,23 @@ Examples:
     subparsers = parser.add_subparsers(dest="command", help="Command to run")
 
     # estimate - Weather-driven estimates
-    estimate_parser = subparsers.add_parser(
-        "estimate", help="Weather-driven pasture growth estimates"
-    )
-    estimate_parser.add_argument(
-        "--days", type=int, default=14, help="Days to look back for averages (default: 14)"
-    )
-    estimate_parser.add_argument(
-        "--forecast", action="store_true", help="Include 7-day growth projection"
-    )
-    estimate_parser.add_argument(
-        "--json", action="store_true", help="Output as JSON"
-    )
+    estimate_parser = subparsers.add_parser("estimate", help="Weather-driven pasture growth estimates")
+    estimate_parser.add_argument("--days", type=int, default=14, help="Days to look back for averages (default: 14)")
+    estimate_parser.add_argument("--forecast", action="store_true", help="Include 7-day growth projection")
+    estimate_parser.add_argument("--json", action="store_true", help="Output as JSON")
 
     # sync - Push pasture data to AgriWebb
-    sync_parser = subparsers.add_parser(
-        "sync", help="Push pasture data to AgriWebb"
-    )
-    sync_parser.add_argument(
-        "--growth-rate", action="store_true", help="Sync growth rates (weather model)"
-    )
-    sync_parser.add_argument(
-        "--sdm", action="store_true", help="Sync standing dry matter (satellite NDVI)"
-    )
-    sync_parser.add_argument(
-        "--days", type=int, default=14, help="Days to look back for growth rates (default: 14)"
-    )
-    sync_parser.add_argument(
-        "--window", type=int, default=14, help="Satellite composite window for SDM (default: 14)"
-    )
-    sync_parser.add_argument(
-        "--forecast", action="store_true", help="Include forecast in growth rate sync"
-    )
-    sync_parser.add_argument(
-        "--dry-run", action="store_true", help="Preview without pushing to AgriWebb"
-    )
+    sync_parser = subparsers.add_parser("sync", help="Push pasture data to AgriWebb")
+    sync_parser.add_argument("--growth-rate", action="store_true", help="Sync growth rates (weather model)")
+    sync_parser.add_argument("--sdm", action="store_true", help="Sync standing dry matter (satellite NDVI)")
+    sync_parser.add_argument("--days", type=int, default=14, help="Days to look back for growth rates (default: 14)")
+    sync_parser.add_argument("--window", type=int, default=14, help="Satellite composite window for SDM (default: 14)")
+    sync_parser.add_argument("--forecast", action="store_true", help="Include forecast in growth rate sync")
+    sync_parser.add_argument("--dry-run", action="store_true", help="Preview without pushing to AgriWebb")
 
     # cache - Download weather, soil, and NDVI data
-    cache_parser = subparsers.add_parser(
-        "cache", help="Download weather, soil, and satellite data"
-    )
-    cache_parser.add_argument(
-        "--refresh", action="store_true",
-        help="Force full re-fetch, ignoring existing cache"
-    )
+    cache_parser = subparsers.add_parser("cache", help="Download weather, soil, and satellite data")
+    cache_parser.add_argument("--refresh", action="store_true", help="Force full re-fetch, ignoring existing cache")
 
     args = parser.parse_args()
 

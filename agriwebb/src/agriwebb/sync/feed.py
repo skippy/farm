@@ -19,8 +19,9 @@ import asyncio
 import json
 from datetime import date
 
-from agriwebb.core import add_feed_on_offer_batch, add_standing_dry_matter_batch, get_cache_dir
+from agriwebb.core import get_cache_dir
 from agriwebb.data.grazing import calculate_paddock_consumption, load_farm_data, load_fields
+from agriwebb.pasture import add_feed_on_offer_batch, add_standing_dry_matter_batch
 from agriwebb.pasture.biomass import (
     EXPECTED_UNCERTAINTY,
     adjust_foo_for_grazing,
@@ -149,9 +150,7 @@ def calculate_foo_from_ndvi(
         if apply_grazing_adjustment:
             if consumption:
                 grazing_pressure = consumption.get("intake_per_ha_kg_day", 0)
-                foo_after_grazing, grazing_correction = adjust_foo_for_grazing(
-                    foo_raw, grazing_pressure
-                )
+                foo_after_grazing, grazing_correction = adjust_foo_for_grazing(foo_raw, grazing_pressure)
             else:
                 # No animals currently grazing - use base correction (0.85)
                 foo_after_grazing, grazing_correction = adjust_foo_for_grazing(foo_raw, 0)
@@ -175,24 +174,26 @@ def calculate_foo_from_ndvi(
         # Moss correction applied to the grazing-adjusted FOO
         foo_final = foo_after_grazing * moss_correction
 
-        results.append({
-            "paddock_id": paddock_id,
-            "paddock_name": paddock_name,
-            "ndvi": round(ndvi, 3),
-            "ndvi_std": round(ndvi_std, 3),
-            "tree_cover_pct": tree_cover_pct,
-            "sdm_kg_ha": round(sdm, 0),
-            "foo_raw_kg_ha": round(foo_raw, 0),  # Before any adjustment
-            "foo_kg_ha": round(foo_final, 0),  # After all adjustments
-            "grazing_pressure_kg_ha_day": round(grazing_pressure, 1),
-            "grazing_correction": grazing_correction,
-            "moss_fraction": round(moss_fraction, 2),
-            "moss_correction": moss_correction,
-            "model": model.name,
-            "quality_flags": quality_flags,
-            "date": reference_date.isoformat(),
-            "uncertainty_kg_ha": EXPECTED_UNCERTAINTY["sdm_error_kg_ha"],
-        })
+        results.append(
+            {
+                "paddock_id": paddock_id,
+                "paddock_name": paddock_name,
+                "ndvi": round(ndvi, 3),
+                "ndvi_std": round(ndvi_std, 3),
+                "tree_cover_pct": tree_cover_pct,
+                "sdm_kg_ha": round(sdm, 0),
+                "foo_raw_kg_ha": round(foo_raw, 0),  # Before any adjustment
+                "foo_kg_ha": round(foo_final, 0),  # After all adjustments
+                "grazing_pressure_kg_ha_day": round(grazing_pressure, 1),
+                "grazing_correction": grazing_correction,
+                "moss_fraction": round(moss_fraction, 2),
+                "moss_correction": moss_correction,
+                "model": model.name,
+                "quality_flags": quality_flags,
+                "date": reference_date.isoformat(),
+                "uncertainty_kg_ha": EXPECTED_UNCERTAINTY["sdm_error_kg_ha"],
+            }
+        )
 
     return results
 
@@ -215,9 +216,7 @@ async def sync_foo_to_agriwebb(
     """
     # Filter out low-quality records
     good_records = [
-        r for r in foo_data
-        if "negative_ndvi" not in r["quality_flags"]
-        and "ndvi_over_1" not in r["quality_flags"]
+        r for r in foo_data if "negative_ndvi" not in r["quality_flags"] and "ndvi_over_1" not in r["quality_flags"]
     ]
 
     print(f"\nRecords to sync: {len(good_records)} of {len(foo_data)}")
@@ -253,9 +252,7 @@ async def sync_foo_to_agriwebb(
 
 
 async def main():
-    parser = argparse.ArgumentParser(
-        description="Sync Feed on Offer from satellite NDVI to AgriWebb"
-    )
+    parser = argparse.ArgumentParser(description="Sync Feed on Offer from satellite NDVI to AgriWebb")
     parser.add_argument(
         "--sync",
         action="store_true",
@@ -305,7 +302,8 @@ async def main():
     # Calculate FOO
     today = date.today()
     foo_data = calculate_foo_from_ndvi(
-        ndvi_data, today,
+        ndvi_data,
+        today,
         apply_grazing_adjustment=apply_grazing,
         apply_moss_adjustment=apply_moss,
     )
@@ -341,11 +339,7 @@ async def main():
             )
         else:
             print(
-                f"{r['paddock_name']:<25} "
-                f"{r['ndvi']:>7.3f} "
-                f"{r['sdm_kg_ha']:>6.0f}   "
-                f"{r['foo_kg_ha']:>6.0f}   "
-                f"{flags}"
+                f"{r['paddock_name']:<25} {r['ndvi']:>7.3f} {r['sdm_kg_ha']:>6.0f}   {r['foo_kg_ha']:>6.0f}   {flags}"
             )
 
     # Summary stats
@@ -357,7 +351,7 @@ async def main():
         if apply_grazing:
             print(f"Average FOO (raw NDVI):    {avg_raw:.0f} kg DM/ha")
             print(f"Average FOO (adjusted):    {avg_foo:.0f} kg DM/ha")
-            print(f"Grazing correction effect: {(1 - avg_foo/avg_raw)*100:.0f}% reduction")
+            print(f"Grazing correction effect: {(1 - avg_foo / avg_raw) * 100:.0f}% reduction")
         else:
             print(f"Average FOO: {avg_foo:.0f} kg DM/ha")
         print(f"Model uncertainty: ±{EXPECTED_UNCERTAINTY['sdm_error_kg_ha']} kg/ha")
@@ -373,7 +367,7 @@ async def main():
             if "errors" in str(result):
                 print(f"Sync failed: {result}")
             else:
-                valid_count = len([r for r in foo_data if 'negative_ndvi' not in r['quality_flags']])
+                valid_count = len([r for r in foo_data if "negative_ndvi" not in r["quality_flags"]])
                 print(f"Sync complete: {valid_count} records pushed")
 
 

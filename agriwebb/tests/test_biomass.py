@@ -33,10 +33,7 @@ def main():
     for month, ndvi in monthly_data:
         season = get_season(month)
         sdm, model = ndvi_to_standing_dry_matter(ndvi, month)
-        month_name = [
-            "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-            "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
-        ][month - 1]
+        month_name = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][month - 1]
         print(f"{month_name:<8} {ndvi:>6.3f} {season.value:<10} {sdm:>12,.0f} {model.name:<25}")
 
     print()
@@ -51,15 +48,15 @@ def main():
         month_curr, ndvi_curr = monthly_data[i]
 
         growth_rate, notes = calculate_growth_rate(
-            ndvi_curr, ndvi_prev,
+            ndvi_curr,
+            ndvi_prev,
             days_between=30,
             month_current=month_curr,
             month_previous=month_prev,
         )
 
-        month_names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                       "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-        period = f"{month_names[month_prev-1]}→{month_names[month_curr-1]}"
+        month_names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+        period = f"{month_names[month_prev - 1]}→{month_names[month_curr - 1]}"
         ndvi_change = f"{ndvi_prev:.2f}→{ndvi_curr:.2f}"
 
         # Interpret the growth rate

@@ -1,15 +1,14 @@
 """Tests for historical growth analysis."""
 
 import pytest
-from datetime import date
 
 from agriwebb.data.historical import (
     calculate_historical_growth,
-    get_monthly_averages,
-    get_yearly_by_month,
     compare_to_historical,
+    get_monthly_averages,
     get_seasonal_summary,
     get_trend_analysis,
+    get_yearly_by_month,
 )
 
 
@@ -39,7 +38,7 @@ class TestCalculateHistoricalGrowth:
     def test_growth_rates_are_floats(self, sample_weather_data):
         """Growth rates are numeric."""
         result = calculate_historical_growth(sample_weather_data)
-        for date_str, growth in result.items():
+        for _date_str, growth in result.items():
             assert isinstance(growth, (int, float))
 
     def test_spring_higher_than_winter(self, sample_weather_data):
@@ -71,12 +70,14 @@ class TestGetMonthlyAverages:
                     else:
                         temp = 10
 
-                    data.append({
-                        "date": f"{year}-{month:02d}-{day:02d}",
-                        "temp_mean_c": temp,
-                        "precip_mm": 5 if month in (10, 11, 12, 1, 2, 3) else 0,
-                        "et0_mm": 2 if month in (12, 1, 2) else 4,
-                    })
+                    data.append(
+                        {
+                            "date": f"{year}-{month:02d}-{day:02d}",
+                            "temp_mean_c": temp,
+                            "precip_mm": 5 if month in (10, 11, 12, 1, 2, 3) else 0,
+                            "et0_mm": 2 if month in (12, 1, 2) else 4,
+                        }
+                    )
         return data
 
     def test_returns_all_months(self, multi_year_weather):
@@ -132,7 +133,7 @@ class TestGetYearlyByMonth:
     def test_returns_averages(self, multi_year_weather):
         """Values are average growth rates."""
         result = get_yearly_by_month(multi_year_weather)
-        for key, value in result.items():
+        for _key, value in result.items():
             assert isinstance(value, float)
 
 
@@ -219,12 +220,14 @@ class TestGetSeasonalSummary:
                     temp = 22
                 else:
                     temp = 12
-                data.append({
-                    "date": f"2024-{month:02d}-{day:02d}",
-                    "temp_mean_c": temp,
-                    "precip_mm": 5,
-                    "et0_mm": 3,
-                })
+                data.append(
+                    {
+                        "date": f"2024-{month:02d}-{day:02d}",
+                        "temp_mean_c": temp,
+                        "precip_mm": 5,
+                        "et0_mm": 3,
+                    }
+                )
         return data
 
     def test_returns_all_seasons(self, full_year_weather):
@@ -238,7 +241,7 @@ class TestGetSeasonalSummary:
     def test_includes_growth_rate(self, full_year_weather):
         """Each season has growth rate."""
         result = get_seasonal_summary(full_year_weather)
-        for season, data in result.items():
+        for _season, data in result.items():
             assert "avg_growth_kg_ha_day" in data
             assert data["avg_growth_kg_ha_day"] >= 0
 
@@ -262,12 +265,14 @@ class TestGetTrendAnalysis:
                 # Generate ~30 days per month to exceed 300/year threshold
                 for day in range(1, 29):
                     temp = 10 + (year - 2020)  # Slight warming trend
-                    data.append({
-                        "date": f"{year}-{month:02d}-{day:02d}",
-                        "temp_mean_c": temp,
-                        "precip_mm": 5,
-                        "et0_mm": 3,
-                    })
+                    data.append(
+                        {
+                            "date": f"{year}-{month:02d}-{day:02d}",
+                            "temp_mean_c": temp,
+                            "precip_mm": 5,
+                            "et0_mm": 3,
+                        }
+                    )
         return data
 
     def test_returns_yearly_averages(self, multi_year_full_data):
@@ -290,10 +295,7 @@ class TestGetTrendAnalysis:
 
     def test_requires_sufficient_data(self):
         """Returns 'insufficient data' with less than 3 years."""
-        short_data = [
-            {"date": "2024-01-15", "temp_mean_c": 10, "precip_mm": 5, "et0_mm": 2}
-            for _ in range(100)
-        ]
+        short_data = [{"date": "2024-01-15", "temp_mean_c": 10, "precip_mm": 5, "et0_mm": 2} for _ in range(100)]
         result = get_trend_analysis(short_data)
         assert result["trend"] == "insufficient data"
 

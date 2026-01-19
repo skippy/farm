@@ -57,10 +57,10 @@ BASE_INTAKE_PCT = {
 # Lactation multipliers by number of lambs nursing
 # Based on NRC requirements for milk production
 LACTATION_MULTIPLIERS = {
-    0: 1.0,   # Not lactating
-    1: 1.7,   # Single lamb - ~70% increase
-    2: 2.3,   # Twins - ~130% increase
-    3: 2.9,   # Triplets - ~190% increase
+    0: 1.0,  # Not lactating
+    1: 1.7,  # Single lamb - ~70% increase
+    2: 2.3,  # Twins - ~130% increase
+    3: 2.9,  # Triplets - ~190% increase
 }
 
 # Weaning assumption: 4 months (120 days) after birth if no wean record
@@ -69,6 +69,7 @@ DEFAULT_WEANING_DAYS = 120
 
 class AnimalIntake(TypedDict):
     """Intake calculation result for one animal."""
+
     animal_id: str
     name: str
     age_class: str
@@ -85,6 +86,7 @@ class AnimalIntake(TypedDict):
 
 class PaddockConsumption(TypedDict):
     """Aggregated consumption for a paddock."""
+
     paddock_id: str
     paddock_name: str
     area_ha: float
@@ -142,11 +144,7 @@ def get_latest_weight(animal: dict) -> tuple[float, str]:
 
     if weights:
         # Sort by observation date (epoch ms)
-        sorted_weights = sorted(
-            weights,
-            key=lambda w: w.get("observationDate", 0),
-            reverse=True
-        )
+        sorted_weights = sorted(weights, key=lambda w: w.get("observationDate", 0), reverse=True)
         latest = sorted_weights[0]
         weight_data = latest.get("weight") or {}
         weight_val = weight_data.get("value")
@@ -173,11 +171,7 @@ def get_wean_date(animal: dict) -> date | None:
     wean_records = [r for r in records if r.get("recordType") == "wean"]
     if wean_records:
         # Use most recent wean record
-        sorted_weans = sorted(
-            wean_records,
-            key=lambda w: w.get("observationDate", 0),
-            reverse=True
-        )
+        sorted_weans = sorted(wean_records, key=lambda w: w.get("observationDate", 0), reverse=True)
         wean_date_ms = sorted_weans[0].get("observationDate")
         if wean_date_ms:
             return datetime.fromtimestamp(wean_date_ms / 1000).date()
@@ -278,10 +272,7 @@ def calculate_animal_intake(
 
     # Lactation adjustment
     is_lactating = nursing_lambs > 0
-    lactation_mult = LACTATION_MULTIPLIERS.get(
-        min(nursing_lambs, 3),
-        LACTATION_MULTIPLIERS[3]
-    )
+    lactation_mult = LACTATION_MULTIPLIERS.get(min(nursing_lambs, 3), LACTATION_MULTIPLIERS[3])
 
     total_intake = base_intake * lactation_mult
 
@@ -422,16 +413,15 @@ def get_grazing_summary(cache_path: Path | None = None) -> dict:
         dam = next((a for a in animals if a.get("animalId") == dam_id), None)
         if dam:
             dam_name = (dam.get("identity") or {}).get("name", dam_id[:8])
-            lamb_names = [
-                (lamb.get("identity") or {}).get("name", "?")
-                for lamb in lambs
-            ]
-            lactating_ewes.append({
-                "dam_id": dam_id,
-                "dam_name": dam_name,
-                "lamb_count": len(lambs),
-                "lamb_names": lamb_names,
-            })
+            lamb_names = [(lamb.get("identity") or {}).get("name", "?") for lamb in lambs]
+            lactating_ewes.append(
+                {
+                    "dam_id": dam_id,
+                    "dam_name": dam_name,
+                    "lamb_count": len(lambs),
+                    "lamb_names": lamb_names,
+                }
+            )
 
     # Total intake across all paddocks
     total_intake = sum(c["total_intake_kg_day"] for c in consumption.values())
@@ -466,7 +456,7 @@ def main():
     if summary["lactating_ewes"]:
         print("\nLactating ewes:")
         for ewe in summary["lactating_ewes"]:
-            lambs_str = ', '.join(ewe['lamb_names'])
+            lambs_str = ", ".join(ewe["lamb_names"])
             print(f"  {ewe['dam_name']}: {ewe['lamb_count']} lamb(s) - {lambs_str}")
 
     print("\nConsumption by paddock:")

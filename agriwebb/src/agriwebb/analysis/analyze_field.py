@@ -22,20 +22,24 @@ async def analyze_field(paddock: dict, end_date: date) -> list[dict]:
                 month_end.isoformat(),
                 scale=30,
             )
-            results.append({
-                "month": month_start.strftime("%b %Y"),
-                "ndvi": result["ndvi_mean"],
-                "stddev": result["ndvi_stddev"],
-                "pixels": result["pixel_count"],
-            })
+            results.append(
+                {
+                    "month": month_start.strftime("%b %Y"),
+                    "ndvi": result["ndvi_mean"],
+                    "stddev": result["ndvi_stddev"],
+                    "pixels": result["pixel_count"],
+                }
+            )
         except Exception as e:
-            results.append({
-                "month": month_start.strftime("%b %Y"),
-                "ndvi": None,
-                "stddev": None,
-                "pixels": 0,
-                "error": str(e),
-            })
+            results.append(
+                {
+                    "month": month_start.strftime("%b %Y"),
+                    "ndvi": None,
+                    "stddev": None,
+                    "pixels": 0,
+                    "error": str(e),
+                }
+            )
 
     return results
 
@@ -74,11 +78,11 @@ async def main():
     print("-" * 44)
 
     for s, h in zip(solstice_data, okf_hay_data, strict=True):
-        s_ndvi = f"{s['ndvi']:.3f}" if s['ndvi'] is not None else "N/A"
-        h_ndvi = f"{h['ndvi']:.3f}" if h['ndvi'] is not None else "N/A"
+        s_ndvi = f"{s['ndvi']:.3f}" if s["ndvi"] is not None else "N/A"
+        h_ndvi = f"{h['ndvi']:.3f}" if h["ndvi"] is not None else "N/A"
 
-        if s['ndvi'] is not None and h['ndvi'] is not None:
-            diff = s['ndvi'] - h['ndvi']
+        if s["ndvi"] is not None and h["ndvi"] is not None:
+            diff = s["ndvi"] - h["ndvi"]
             diff_str = f"{diff:+.3f}"
         else:
             diff_str = "-"

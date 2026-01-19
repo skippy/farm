@@ -6,7 +6,7 @@ from datetime import date
 import httpx
 import pytest
 
-from agriwebb.core import client
+from agriwebb.weather import api as weather_api
 from agriwebb.weather import ncei as weather
 
 
@@ -15,9 +15,7 @@ class TestFetchNceiPrecipitation:
 
     async def test_fetch_returns_parsed_data(self, mock_ncei, sample_ncei_response):
         """Verify NCEI response is parsed correctly."""
-        mock_ncei.get("/access/services/data/v1").mock(
-            return_value=httpx.Response(200, json=sample_ncei_response)
-        )
+        mock_ncei.get("/access/services/data/v1").mock(return_value=httpx.Response(200, json=sample_ncei_response))
 
         result = await weather.fetch_ncei_precipitation(date(2026, 1, 15))
 
@@ -29,9 +27,7 @@ class TestFetchNceiPrecipitation:
 
     async def test_fetch_returns_none_when_no_data(self, mock_ncei):
         """Verify None is returned when NCEI has no data."""
-        mock_ncei.get("/access/services/data/v1").mock(
-            return_value=httpx.Response(200, json=[])
-        )
+        mock_ncei.get("/access/services/data/v1").mock(return_value=httpx.Response(200, json=[]))
 
         result = await weather.fetch_ncei_precipitation(date(2026, 1, 15))
 
@@ -81,9 +77,7 @@ class TestFetchNceiPrecipitation:
 
     async def test_fetch_raises_on_http_error(self, mock_ncei):
         """Verify HTTP errors are raised."""
-        mock_ncei.get("/access/services/data/v1").mock(
-            return_value=httpx.Response(500)
-        )
+        mock_ncei.get("/access/services/data/v1").mock(return_value=httpx.Response(500))
 
         with pytest.raises(httpx.HTTPStatusError):
             await weather.fetch_ncei_precipitation(date(2026, 1, 15))
@@ -137,11 +131,14 @@ class TestFetchNceiDateRange:
     async def test_returns_list_of_records(self, mock_ncei):
         """Verify date range returns multiple records."""
         mock_ncei.get("/access/services/data/v1").mock(
-            return_value=httpx.Response(200, json=[
-                {"DATE": "2026-01-13", "STATION": "USW00094276", "PRCP": "0.10", "TMAX": "48", "TMIN": "40"},
-                {"DATE": "2026-01-14", "STATION": "USW00094276", "PRCP": "0.25", "TMAX": "50", "TMIN": "42"},
-                {"DATE": "2026-01-15", "STATION": "USW00094276", "PRCP": "0.00", "TMAX": "52", "TMIN": "44"},
-            ])
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {"DATE": "2026-01-13", "STATION": "USW00094276", "PRCP": "0.10", "TMAX": "48", "TMIN": "40"},
+                    {"DATE": "2026-01-14", "STATION": "USW00094276", "PRCP": "0.25", "TMAX": "50", "TMIN": "42"},
+                    {"DATE": "2026-01-15", "STATION": "USW00094276", "PRCP": "0.00", "TMAX": "52", "TMIN": "44"},
+                ],
+            )
         )
 
         result = await weather.fetch_ncei_date_range(date(2026, 1, 13), date(2026, 1, 15))
@@ -153,9 +150,7 @@ class TestFetchNceiDateRange:
 
     async def test_returns_empty_list_when_no_data(self, mock_ncei):
         """Verify empty list returned when NCEI has no data."""
-        mock_ncei.get("/access/services/data/v1").mock(
-            return_value=httpx.Response(200, json=[])
-        )
+        mock_ncei.get("/access/services/data/v1").mock(return_value=httpx.Response(200, json=[]))
 
         result = await weather.fetch_ncei_date_range(date(2026, 1, 13), date(2026, 1, 15))
 
@@ -163,9 +158,7 @@ class TestFetchNceiDateRange:
 
     async def test_sends_correct_date_range_params(self, mock_ncei):
         """Verify correct start/end dates are sent."""
-        route = mock_ncei.get("/access/services/data/v1").mock(
-            return_value=httpx.Response(200, json=[])
-        )
+        route = mock_ncei.get("/access/services/data/v1").mock(return_value=httpx.Response(200, json=[]))
 
         await weather.fetch_ncei_date_range(date(2026, 1, 1), date(2026, 1, 31))
 
@@ -176,9 +169,12 @@ class TestFetchNceiDateRange:
     async def test_handles_missing_temperature_fields(self, mock_ncei):
         """Verify missing temp fields default to None."""
         mock_ncei.get("/access/services/data/v1").mock(
-            return_value=httpx.Response(200, json=[
-                {"DATE": "2026-01-15", "STATION": "USW00094276", "PRCP": "0.50"},
-            ])
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {"DATE": "2026-01-15", "STATION": "USW00094276", "PRCP": "0.50"},
+                ],
+            )
         )
 
         result = await weather.fetch_ncei_date_range(date(2026, 1, 15), date(2026, 1, 15))
@@ -237,17 +233,20 @@ class TestGetRainfalls:
     async def test_returns_rainfall_list(self, mock_agriwebb):
         """Verify rainfalls are returned."""
         mock_agriwebb.post("/v2").mock(
-            return_value=httpx.Response(200, json={
-                "data": {
-                    "rainfalls": [
-                        {"id": "r1", "time": 1705320000000, "value": 6.35, "unit": "mm", "mode": "cumulative"},
-                        {"id": "r2", "time": 1705406400000, "value": 12.7, "unit": "mm", "mode": "cumulative"},
-                    ]
-                }
-            })
+            return_value=httpx.Response(
+                200,
+                json={
+                    "data": {
+                        "rainfalls": [
+                            {"id": "r1", "time": 1705320000000, "value": 6.35, "unit": "mm", "mode": "cumulative"},
+                            {"id": "r2", "time": 1705406400000, "value": 12.7, "unit": "mm", "mode": "cumulative"},
+                        ]
+                    }
+                },
+            )
         )
 
-        result = await client.get_rainfalls()
+        result = await weather_api.get_rainfalls()
 
         assert len(result) == 2
         assert result[0]["value"] == 6.35
@@ -255,30 +254,24 @@ class TestGetRainfalls:
 
     async def test_returns_empty_list_when_no_records(self, mock_agriwebb):
         """Verify empty list returned when no rainfalls exist."""
-        mock_agriwebb.post("/v2").mock(
-            return_value=httpx.Response(200, json={"data": {"rainfalls": []}})
-        )
+        mock_agriwebb.post("/v2").mock(return_value=httpx.Response(200, json={"data": {"rainfalls": []}}))
 
-        result = await client.get_rainfalls()
+        result = await weather_api.get_rainfalls()
 
         assert result == []
 
     async def test_raises_on_error(self, mock_agriwebb):
         """Verify error raised on GraphQL errors."""
-        mock_agriwebb.post("/v2").mock(
-            return_value=httpx.Response(200, json={"errors": [{"message": "Unauthorized"}]})
-        )
+        mock_agriwebb.post("/v2").mock(return_value=httpx.Response(200, json={"errors": [{"message": "Unauthorized"}]}))
 
         with pytest.raises(ValueError, match="GraphQL errors"):
-            await client.get_rainfalls()
+            await weather_api.get_rainfalls()
 
     async def test_sends_sensor_filter(self, mock_agriwebb):
         """Verify sensor ID is included in query."""
-        route = mock_agriwebb.post("/v2").mock(
-            return_value=httpx.Response(200, json={"data": {"rainfalls": []}})
-        )
+        route = mock_agriwebb.post("/v2").mock(return_value=httpx.Response(200, json={"data": {"rainfalls": []}}))
 
-        await client.get_rainfalls()
+        await weather_api.get_rainfalls()
 
         body = route.calls[0].request.content.decode()
         assert "sensorId" in body
@@ -287,17 +280,15 @@ class TestGetRainfalls:
 class TestRainfallIntegration:
     """Integration tests for the full rainfall flow."""
 
-    async def test_fetch_and_push_rainfall(self, mock_ncei, mock_agriwebb, sample_ncei_response, sample_rainfall_response):
+    async def test_fetch_and_push_rainfall(
+        self, mock_ncei, mock_agriwebb, sample_ncei_response, sample_rainfall_response
+    ):
         """Verify NCEI data can be fetched and pushed to AgriWebb."""
         # Mock NCEI response
-        mock_ncei.get("/access/services/data/v1").mock(
-            return_value=httpx.Response(200, json=sample_ncei_response)
-        )
+        mock_ncei.get("/access/services/data/v1").mock(return_value=httpx.Response(200, json=sample_ncei_response))
 
         # Mock AgriWebb push
-        mock_agriwebb.post("/v2").mock(
-            return_value=httpx.Response(200, json=sample_rainfall_response)
-        )
+        mock_agriwebb.post("/v2").mock(return_value=httpx.Response(200, json=sample_rainfall_response))
 
         # Fetch from NCEI
         weather_data = await weather.fetch_ncei_precipitation(date(2026, 1, 15))
@@ -305,10 +296,7 @@ class TestRainfallIntegration:
         assert weather_data["precipitation_inches"] == 0.25
 
         # Push to AgriWebb
-        response = await client.add_rainfall(
-            weather_data["date"],
-            weather_data["precipitation_inches"]
-        )
+        response = await weather_api.add_rainfall(weather_data["date"], weather_data["precipitation_inches"])
 
         assert "data" in response
         assert "addRainfalls" in response["data"]
@@ -316,21 +304,14 @@ class TestRainfallIntegration:
     async def test_handles_zero_precipitation(self, mock_ncei, mock_agriwebb, sample_rainfall_response):
         """Verify zero precipitation is handled correctly."""
         mock_ncei.get("/access/services/data/v1").mock(
-            return_value=httpx.Response(200, json=[
-                {"DATE": "2026-01-15", "STATION": "USW00094276", "PRCP": "0.00"}
-            ])
+            return_value=httpx.Response(200, json=[{"DATE": "2026-01-15", "STATION": "USW00094276", "PRCP": "0.00"}])
         )
 
-        mock_agriwebb.post("/v2").mock(
-            return_value=httpx.Response(200, json=sample_rainfall_response)
-        )
+        mock_agriwebb.post("/v2").mock(return_value=httpx.Response(200, json=sample_rainfall_response))
 
         weather_data = await weather.fetch_ncei_precipitation(date(2026, 1, 15))
         assert weather_data["precipitation_inches"] == 0.0
 
         # Should still be able to push zero rainfall
-        response = await client.add_rainfall(
-            weather_data["date"],
-            weather_data["precipitation_inches"]
-        )
+        response = await weather_api.add_rainfall(weather_data["date"], weather_data["precipitation_inches"])
         assert "data" in response

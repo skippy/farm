@@ -1,19 +1,20 @@
 """Tests for Open-Meteo weather API integration."""
 
+from datetime import date
+
+import httpx
 import pytest
 import respx
 from httpx import Response
-from datetime import date, timedelta
-import json
 
 from agriwebb.weather.openmeteo import (
-    HISTORICAL_API,
-    FORECAST_API,
     DEFAULT_LAT,
     DEFAULT_LON,
-    fetch_historical,
-    fetch_forecast,
+    FORECAST_API,
+    HISTORICAL_API,
     fetch_current_conditions,
+    fetch_forecast,
+    fetch_historical,
     update_weather_cache,
 )
 
@@ -34,16 +35,14 @@ class TestFetchHistorical:
                 "temperature_2m_mean": [5.3, 6.3, 4.9],
                 "precipitation_sum": [12.5, 0.0, 5.2],
                 "et0_fao_evapotranspiration": [0.8, 1.2, 0.9],
-            }
+            },
         }
 
     @respx.mock
     @pytest.mark.asyncio
     async def test_fetch_historical_success(self, mock_historical_response):
         """Successfully fetches and parses historical data."""
-        respx.get(HISTORICAL_API).mock(
-            return_value=Response(200, json=mock_historical_response)
-        )
+        respx.get(HISTORICAL_API).mock(return_value=Response(200, json=mock_historical_response))
 
         result = await fetch_historical(
             start_date=date(2024, 1, 1),
@@ -70,9 +69,7 @@ class TestFetchHistorical:
                 "et0_fao_evapotranspiration": [None],
             }
         }
-        respx.get(HISTORICAL_API).mock(
-            return_value=Response(200, json=response)
-        )
+        respx.get(HISTORICAL_API).mock(return_value=Response(200, json=response))
 
         result = await fetch_historical(
             start_date=date(2024, 1, 1),
@@ -87,9 +84,7 @@ class TestFetchHistorical:
     @pytest.mark.asyncio
     async def test_fetch_historical_custom_location(self, mock_historical_response):
         """Can fetch for custom location."""
-        route = respx.get(HISTORICAL_API).mock(
-            return_value=Response(200, json=mock_historical_response)
-        )
+        route = respx.get(HISTORICAL_API).mock(return_value=Response(200, json=mock_historical_response))
 
         await fetch_historical(
             start_date=date(2024, 1, 1),
@@ -118,16 +113,14 @@ class TestFetchForecast:
                 "temperature_2m_min": [4.1, 5.4, 3.9],
                 "precipitation_sum": [0.0, 8.5, 2.2],
                 "et0_fao_evapotranspiration": [1.5, 1.0, 1.2],
-            }
+            },
         }
 
     @respx.mock
     @pytest.mark.asyncio
     async def test_fetch_forecast_success(self, mock_forecast_response):
         """Successfully fetches forecast data."""
-        respx.get(FORECAST_API).mock(
-            return_value=Response(200, json=mock_forecast_response)
-        )
+        respx.get(FORECAST_API).mock(return_value=Response(200, json=mock_forecast_response))
 
         result = await fetch_forecast(days=3)
 
@@ -139,9 +132,7 @@ class TestFetchForecast:
     @pytest.mark.asyncio
     async def test_fetch_forecast_calculates_mean_temp(self, mock_forecast_response):
         """Forecast calculates mean from max/min."""
-        respx.get(FORECAST_API).mock(
-            return_value=Response(200, json=mock_forecast_response)
-        )
+        respx.get(FORECAST_API).mock(return_value=Response(200, json=mock_forecast_response))
 
         result = await fetch_forecast(days=3)
 
@@ -164,16 +155,14 @@ class TestFetchCurrentConditions:
                 "precipitation": 0.2,
                 "wind_speed_10m": 12.5,
                 "weather_code": 3,
-            }
+            },
         }
 
     @respx.mock
     @pytest.mark.asyncio
     async def test_fetch_current_conditions(self, mock_current_response):
         """Fetches current weather conditions."""
-        respx.get(FORECAST_API).mock(
-            return_value=Response(200, json=mock_current_response)
-        )
+        respx.get(FORECAST_API).mock(return_value=Response(200, json=mock_current_response))
 
         result = await fetch_current_conditions()
 
@@ -214,12 +203,8 @@ class TestUpdateWeatherCache:
         """Cache update returns proper structure."""
         historical, forecast = mock_api_responses
 
-        respx.get(HISTORICAL_API).mock(
-            return_value=Response(200, json=historical)
-        )
-        respx.get(FORECAST_API).mock(
-            return_value=Response(200, json=forecast)
-        )
+        respx.get(HISTORICAL_API).mock(return_value=Response(200, json=historical))
+        respx.get(FORECAST_API).mock(return_value=Response(200, json=forecast))
 
         cache_path = tmp_path / "weather.json"
         result = await update_weather_cache(cache_path=cache_path)
@@ -287,9 +272,7 @@ class TestWeatherDataIntegration:
                 "et0_fao_evapotranspiration": [3.5],
             }
         }
-        respx.get(HISTORICAL_API).mock(
-            return_value=Response(200, json=response)
-        )
+        respx.get(HISTORICAL_API).mock(return_value=Response(200, json=response))
 
         result = await fetch_historical(
             start_date=date(2024, 4, 15),
@@ -315,11 +298,9 @@ class TestErrorHandling:
     @pytest.mark.asyncio
     async def test_historical_api_error(self):
         """Handles API errors gracefully."""
-        respx.get(HISTORICAL_API).mock(
-            return_value=Response(500, text="Server Error")
-        )
+        respx.get(HISTORICAL_API).mock(return_value=Response(500, text="Server Error"))
 
-        with pytest.raises(Exception):
+        with pytest.raises(httpx.HTTPStatusError):
             await fetch_historical(
                 start_date=date(2024, 1, 1),
                 end_date=date(2024, 1, 3),
@@ -329,9 +310,7 @@ class TestErrorHandling:
     @pytest.mark.asyncio
     async def test_forecast_api_error(self):
         """Handles forecast API errors."""
-        respx.get(FORECAST_API).mock(
-            return_value=Response(503, text="Service Unavailable")
-        )
+        respx.get(FORECAST_API).mock(return_value=Response(503, text="Service Unavailable"))
 
-        with pytest.raises(Exception):
+        with pytest.raises(httpx.HTTPStatusError):
             await fetch_forecast(days=7)

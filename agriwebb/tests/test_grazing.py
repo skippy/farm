@@ -1,20 +1,21 @@
 """Tests for grazing consumption model."""
 
-import pytest
 from datetime import date, datetime, timedelta
 
+import pytest
+
 from agriwebb.data.grazing import (
+    BASE_INTAKE_PCT,
+    DEFAULT_WEANING_DAYS,
     # Constants
     DEFAULT_WEIGHTS,
-    BASE_INTAKE_PCT,
     LACTATION_MULTIPLIERS,
-    DEFAULT_WEANING_DAYS,
+    calculate_animal_intake,
+    calculate_paddock_consumption,
+    find_nursing_lambs,
     # Functions
     get_latest_weight,
     get_wean_date,
-    find_nursing_lambs,
-    calculate_animal_intake,
-    calculate_paddock_consumption,
 )
 
 
@@ -24,10 +25,19 @@ class TestDefaultWeights:
     def test_all_age_classes_have_weights(self):
         """All common age classes should have default weights."""
         expected_classes = [
-            "ewe", "ram", "wether", "lamb",
-            "ewe_lamb", "ram_lamb", "wether_lamb",
-            "ewe_weaner", "ram_weaner", "wether_weaner",
-            "ewe_hogget", "ram_hogget", "wether_hogget",
+            "ewe",
+            "ram",
+            "wether",
+            "lamb",
+            "ewe_lamb",
+            "ram_lamb",
+            "wether_lamb",
+            "ewe_weaner",
+            "ram_weaner",
+            "wether_weaner",
+            "ewe_hogget",
+            "ram_hogget",
+            "wether_hogget",
             "maiden_ewe",
         ]
         for age_class in expected_classes:
@@ -354,9 +364,7 @@ class TestCalculateAnimalIntake:
             "state": {"onFarm": True, "currentLocationId": "paddock-1"},
             "records": [],
         }
-        fields = {
-            "paddock-1": {"id": "paddock-1", "name": "North Field", "area_ha": 5.0}
-        }
+        fields = {"paddock-1": {"id": "paddock-1", "name": "North Field", "area_ha": 5.0}}
         intake = calculate_animal_intake(animal, fields=fields)
         assert intake["paddock_name"] == "North Field"
 
@@ -422,14 +430,16 @@ class TestCalculatePaddockConsumption:
     def test_excludes_small_paddocks(self, sample_animals, sample_fields):
         """Excludes paddocks below minimum area."""
         sample_fields["paddock-3"] = {"id": "paddock-3", "name": "Tiny", "area_ha": 0.1}
-        sample_animals.append({
-            "animalId": "ewe-4",
-            "identity": {"name": "Tiny Ewe"},
-            "characteristics": {"ageClass": "ewe"},
-            "state": {"onFarm": True, "currentLocationId": "paddock-3"},
-            "parentage": {},
-            "records": [],
-        })
+        sample_animals.append(
+            {
+                "animalId": "ewe-4",
+                "identity": {"name": "Tiny Ewe"},
+                "characteristics": {"ageClass": "ewe"},
+                "state": {"onFarm": True, "currentLocationId": "paddock-3"},
+                "parentage": {},
+                "records": [],
+            }
+        )
 
         result = calculate_paddock_consumption(sample_animals, sample_fields, min_area_ha=0.2)
         assert "paddock-3" not in result

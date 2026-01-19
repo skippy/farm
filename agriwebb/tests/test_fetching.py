@@ -6,7 +6,6 @@ import respx
 
 from agriwebb.core import client
 
-
 # --- Fixtures ---
 
 
@@ -39,14 +38,16 @@ def sample_fields_response():
                     "cropType": None,
                     "geometry": {
                         "type": "Polygon",
-                        "coordinates": [[
-                            [-123.05, 48.50],
-                            [-123.04, 48.50],
-                            [-123.04, 48.51],
-                            [-123.05, 48.51],
-                            [-123.05, 48.50],
-                        ]]
-                    }
+                        "coordinates": [
+                            [
+                                [-123.05, 48.50],
+                                [-123.04, 48.50],
+                                [-123.04, 48.51],
+                                [-123.05, 48.51],
+                                [-123.05, 48.50],
+                            ]
+                        ],
+                    },
                 },
                 {
                     "id": "field-2",
@@ -57,14 +58,16 @@ def sample_fields_response():
                     "cropType": None,
                     "geometry": {
                         "type": "Polygon",
-                        "coordinates": [[
-                            [-123.06, 48.49],
-                            [-123.05, 48.49],
-                            [-123.05, 48.50],
-                            [-123.06, 48.50],
-                            [-123.06, 48.49],
-                        ]]
-                    }
+                        "coordinates": [
+                            [
+                                [-123.06, 48.49],
+                                [-123.05, 48.49],
+                                [-123.05, 48.50],
+                                [-123.06, 48.50],
+                                [-123.06, 48.49],
+                            ]
+                        ],
+                    },
                 },
                 {
                     "id": "field-3",
@@ -73,8 +76,8 @@ def sample_fields_response():
                     "grazableArea": 0.1,
                     "landUse": "OTHER",
                     "cropType": None,
-                    "geometry": None
-                }
+                    "geometry": None,
+                },
             ]
         }
     }
@@ -99,8 +102,13 @@ def sample_animals_with_lineage():
                         "visualColor": None,
                         "ageClass": "ewe",
                     },
-                    "state": {"onFarm": True, "currentLocationId": None, "fate": None,
-                             "reproductiveStatus": None, "offspringCount": 3},
+                    "state": {
+                        "onFarm": True,
+                        "currentLocationId": None,
+                        "fate": None,
+                        "reproductiveStatus": None,
+                        "offspringCount": 3,
+                    },
                     "parentage": {"sires": [], "dams": []},
                     "managementGroup": None,
                 },
@@ -117,15 +125,22 @@ def sample_animals_with_lineage():
                         "visualColor": None,
                         "ageClass": "lamb",
                     },
-                    "state": {"onFarm": True, "currentLocationId": None, "fate": None,
-                             "reproductiveStatus": None, "offspringCount": 0},
+                    "state": {
+                        "onFarm": True,
+                        "currentLocationId": None,
+                        "fate": None,
+                        "reproductiveStatus": None,
+                        "offspringCount": 0,
+                    },
                     "parentage": {
                         "sires": [],
-                        "dams": [{
-                            "parentAnimalId": "ewe-1",
-                            "parentAnimalIdentity": {"vid": "E001", "name": "Daisy", "eid": None},
-                            "parentType": "GENETIC",
-                        }]
+                        "dams": [
+                            {
+                                "parentAnimalId": "ewe-1",
+                                "parentAnimalIdentity": {"vid": "E001", "name": "Daisy", "eid": None},
+                                "parentType": "GENETIC",
+                            }
+                        ],
                     },
                     "managementGroup": None,
                 },
@@ -142,15 +157,22 @@ def sample_animals_with_lineage():
                         "visualColor": None,
                         "ageClass": "lamb",
                     },
-                    "state": {"onFarm": False, "currentLocationId": None, "fate": "SOLD",
-                             "reproductiveStatus": None, "offspringCount": 0},
+                    "state": {
+                        "onFarm": False,
+                        "currentLocationId": None,
+                        "fate": "SOLD",
+                        "reproductiveStatus": None,
+                        "offspringCount": 0,
+                    },
                     "parentage": {
                         "sires": [],
-                        "dams": [{
-                            "parentAnimalId": "ewe-1",
-                            "parentAnimalIdentity": {"vid": "E001", "name": "Daisy", "eid": None},
-                            "parentType": "GENETIC",
-                        }]
+                        "dams": [
+                            {
+                                "parentAnimalId": "ewe-1",
+                                "parentAnimalIdentity": {"vid": "E001", "name": "Daisy", "eid": None},
+                                "parentType": "GENETIC",
+                            }
+                        ],
                     },
                     "managementGroup": None,
                 },
@@ -167,8 +189,13 @@ def sample_animals_with_lineage():
                         "visualColor": None,
                         "ageClass": "ram",
                     },
-                    "state": {"onFarm": True, "currentLocationId": None, "fate": None,
-                             "reproductiveStatus": None, "offspringCount": 0},
+                    "state": {
+                        "onFarm": True,
+                        "currentLocationId": None,
+                        "fate": None,
+                        "reproductiveStatus": None,
+                        "offspringCount": 0,
+                    },
                     "parentage": {"sires": [], "dams": []},
                     "managementGroup": None,
                 },
@@ -225,9 +252,7 @@ class TestGetFields:
 
     async def test_returns_fields_list(self, mock_agriwebb, sample_fields_response):
         """Verify fields are returned (default min_area filters small plots)."""
-        mock_agriwebb.post("/v2").mock(
-            return_value=httpx.Response(200, json=sample_fields_response)
-        )
+        mock_agriwebb.post("/v2").mock(return_value=httpx.Response(200, json=sample_fields_response))
 
         result = await client.get_fields()  # Default min_area_ha=0.2
 
@@ -237,9 +262,7 @@ class TestGetFields:
 
     async def test_filters_by_min_area(self, mock_agriwebb, sample_fields_response):
         """Verify min_area_ha filter works."""
-        mock_agriwebb.post("/v2").mock(
-            return_value=httpx.Response(200, json=sample_fields_response)
-        )
+        mock_agriwebb.post("/v2").mock(return_value=httpx.Response(200, json=sample_fields_response))
 
         result = await client.get_fields(min_area_ha=0.2)
 
@@ -249,9 +272,7 @@ class TestGetFields:
 
     async def test_includes_geometry(self, mock_agriwebb, sample_fields_response):
         """Verify geometry data is included."""
-        mock_agriwebb.post("/v2").mock(
-            return_value=httpx.Response(200, json=sample_fields_response)
-        )
+        mock_agriwebb.post("/v2").mock(return_value=httpx.Response(200, json=sample_fields_response))
 
         result = await client.get_fields()
 
@@ -261,9 +282,7 @@ class TestGetFields:
 
     async def test_handles_empty_response(self, mock_agriwebb):
         """Verify empty list returned when no fields."""
-        mock_agriwebb.post("/v2").mock(
-            return_value=httpx.Response(200, json={"data": {"fields": []}})
-        )
+        mock_agriwebb.post("/v2").mock(return_value=httpx.Response(200, json={"data": {"fields": []}}))
 
         result = await client.get_fields()
 
@@ -271,9 +290,7 @@ class TestGetFields:
 
     async def test_raises_on_error(self, mock_agriwebb):
         """Verify error raised on GraphQL errors."""
-        mock_agriwebb.post("/v2").mock(
-            return_value=httpx.Response(200, json={"errors": [{"message": "Unauthorized"}]})
-        )
+        mock_agriwebb.post("/v2").mock(return_value=httpx.Response(200, json={"errors": [{"message": "Unauthorized"}]}))
 
         with pytest.raises(ValueError, match="GraphQL errors"):
             await client.get_fields()
@@ -317,13 +334,15 @@ class TestSoilDataFetching:
         """Verify centroid calculation for polygon."""
         geometry = {
             "type": "Polygon",
-            "coordinates": [[
-                [-123.0, 48.0],
-                [-123.0, 49.0],
-                [-122.0, 49.0],
-                [-122.0, 48.0],
-                [-123.0, 48.0],
-            ]]
+            "coordinates": [
+                [
+                    [-123.0, 48.0],
+                    [-123.0, 49.0],
+                    [-122.0, 49.0],
+                    [-122.0, 48.0],
+                    [-123.0, 48.0],
+                ]
+            ],
         }
 
         lat, lon = calculate_centroid(geometry)
@@ -340,7 +359,7 @@ class TestSoilDataFetching:
             "coordinates": [
                 [[[-123.0, 48.0], [-123.0, 49.0], [-122.0, 48.0], [-123.0, 48.0]]],
                 [[[-121.0, 48.0], [-121.0, 49.0], [-120.0, 48.0], [-121.0, 48.0]]],
-            ]
+            ],
         }
 
         result = calculate_centroid(geometry)
@@ -357,9 +376,7 @@ class TestSoilDataFetching:
     async def test_query_soil_by_mukey(self, mock_usda_sda, sample_soil_query_response):
         """Verify soil properties query works."""
         # Test the query format and response parsing
-        mock_usda_sda.post("/TABULAR/post.rest").mock(
-            return_value=httpx.Response(200, json=sample_soil_query_response)
-        )
+        mock_usda_sda.post("/TABULAR/post.rest").mock(return_value=httpx.Response(200, json=sample_soil_query_response))
 
         # Inline version of the query logic for testing
         async with httpx.AsyncClient() as http_client:
@@ -393,7 +410,7 @@ class TestSoilDataFetching:
             html = response.text
 
         # Extract mukey from HTML
-        mukey_match = re.search(r'mukey=(\d{6,7})', html)
+        mukey_match = re.search(r"mukey=(\d{6,7})", html)
         assert mukey_match is not None
         assert mukey_match.group(1) == "123456"
 
@@ -416,11 +433,13 @@ class TestLactationDataFetching:
 
             if birth_date and dams:
                 dam = dams[0]
-                births.append({
-                    "offspring_id": animal["animalId"],
-                    "dam_id": dam["parentAnimalId"],
-                    "birth_date": birth_date,
-                })
+                births.append(
+                    {
+                        "offspring_id": animal["animalId"],
+                        "dam_id": dam["parentAnimalId"],
+                        "birth_date": birth_date,
+                    }
+                )
 
         # Should find 2 lambs with dam references
         assert len(births) == 2
@@ -440,6 +459,7 @@ class TestLactationDataFetching:
 
         # Group by dam
         from collections import defaultdict
+
         lactation_by_dam = defaultdict(list)
 
         for birth in births:
@@ -448,10 +468,12 @@ class TestLactationDataFetching:
             birth_date = datetime.fromisoformat(birth_date_str)
             lactation_end = birth_date + timedelta(days=LACTATION_DURATION_DAYS)
 
-            lactation_by_dam[dam_id].append({
-                "start": birth_date,
-                "end": lactation_end,
-            })
+            lactation_by_dam[dam_id].append(
+                {
+                    "start": birth_date,
+                    "end": lactation_end,
+                }
+            )
 
         # Should have 2 dams
         assert len(lactation_by_dam) == 2
@@ -471,7 +493,7 @@ class TestLactationDataFetching:
         # Count lactating on April 15, 2024
         check_date = datetime(2024, 4, 15)
         count = 0
-        for dam_id, periods in lactation_periods.items():
+        for _dam_id, periods in lactation_periods.items():
             for period in periods:
                 if period["start"] <= check_date <= period["end"]:
                     count += 1
@@ -485,7 +507,8 @@ class TestLactationDataFetching:
         animals = sample_animals_with_lineage["data"]["animals"]
 
         ewes = [
-            a for a in animals
+            a
+            for a in animals
             if a["characteristics"].get("sex") in ["FEMALE", "Female", "female", "F"]
             and a["characteristics"].get("speciesCommonName") in ["SHEEP", "Sheep", "sheep", None]
         ]
@@ -503,7 +526,7 @@ class TestBirthDateParsing:
 
     def test_parse_timestamp_milliseconds(self):
         """Verify millisecond timestamp parsing."""
-        from datetime import datetime, UTC
+        from datetime import UTC, datetime
 
         birth_date = 1709251200000  # 2024-03-01 00:00:00 UTC
 
@@ -547,9 +570,7 @@ class TestFieldsToSoilsIntegration:
 
     async def test_fields_have_geometry_for_centroid(self, mock_agriwebb, sample_fields_response):
         """Verify fields have geometry needed for soil lookup."""
-        mock_agriwebb.post("/v2").mock(
-            return_value=httpx.Response(200, json=sample_fields_response)
-        )
+        mock_agriwebb.post("/v2").mock(return_value=httpx.Response(200, json=sample_fields_response))
 
         fields = await client.get_fields(min_area_ha=0.2)
 

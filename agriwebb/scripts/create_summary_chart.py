@@ -4,13 +4,12 @@ Generate carbon balance summary visualization.
 """
 
 import json
+import sys
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
 import numpy as np
 
-import sys
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from agriwebb.core import get_cache_dir
 

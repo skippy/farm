@@ -18,15 +18,16 @@ from agriwebb.core import get_cache_dir
 # Set by ground-truthing - overrides the model estimate
 # Format: paddock_name -> moss_fraction (0.0 to 1.0)
 MANUAL_MOSS_OVERRIDES: dict[str, float] = {
-    "Lauren": 0.05,           # 5% - productive pasture
-    "Solstice Field": 0.18,   # 15-20% - some mossy areas
-    "OKF-Hay Field": 0.00,    # 0% - no moss
+    "Lauren": 0.05,  # 5% - productive pasture
+    "Solstice Field": 0.18,  # 15-20% - some mossy areas
+    "OKF-Hay Field": 0.00,  # 0% - no moss
     "OKF-South Field": 0.03,  # 2-3% - minimal moss
 }
 
 
 class MossEstimate(TypedDict):
     """Moss estimation result for a paddock."""
+
     paddock_id: str
     paddock_name: str
     seasonality_index: float | None  # 0 = evergreen, 1 = fully seasonal
@@ -352,7 +353,7 @@ def main():
             f"{e['paddock_name']:<25} "
             f"{season:>8} "
             f"{e['drainage_score']:>7.2f} "
-            f"{e['moss_fraction']*100:>6.1f}% "
+            f"{e['moss_fraction'] * 100:>6.1f}% "
             f"{e['correction_factor']:>6.2f} "
             f"{e['data_quality']}"
         )
@@ -363,13 +364,13 @@ def main():
 
     print("\n--- Summary ---")
     print(f"Paddocks analyzed: {len(estimates)}")
-    print(f"Average moss fraction: {avg_moss*100:.1f}%")
+    print(f"Average moss fraction: {avg_moss * 100:.1f}%")
     print(f"High moss (>20%): {len(high_moss)} paddocks")
 
     if high_moss:
         print("\nHigh moss paddocks:")
         for e in sorted(high_moss, key=lambda x: -x["moss_fraction"]):
-            print(f"  {e['paddock_name']}: {e['moss_fraction']*100:.0f}% moss")
+            print(f"  {e['paddock_name']}: {e['moss_fraction'] * 100:.0f}% moss")
 
 
 if __name__ == "__main__":

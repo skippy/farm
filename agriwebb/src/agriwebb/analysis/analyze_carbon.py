@@ -51,10 +51,7 @@ def analyze_paddock_carbon(paddock_data: dict, year: int | None = None) -> dict:
         for i, n in enumerate(filled_ndvi):
             if n is None:
                 # Use average of neighbors or overall mean
-                neighbors = [
-                    filled_ndvi[j] for j in [i-1, i+1]
-                    if 0 <= j < 12 and filled_ndvi[j] is not None
-                ]
+                neighbors = [filled_ndvi[j] for j in [i - 1, i + 1] if 0 <= j < 12 and filled_ndvi[j] is not None]
                 if neighbors:
                     filled_ndvi[i] = sum(neighbors) / len(neighbors)
                 else:
@@ -69,12 +66,14 @@ def analyze_paddock_carbon(paddock_data: dict, year: int | None = None) -> dict:
             pasture_type=PastureType.MODERATE,
         )
 
-        results.append({
-            "year": y,
-            "valid_months": valid_months,
-            "avg_ndvi": sum(n for n in monthly_ndvi if n) / valid_months,
-            **carbon,
-        })
+        results.append(
+            {
+                "year": y,
+                "valid_months": valid_months,
+                "avg_ndvi": sum(n for n in monthly_ndvi if n) / valid_months,
+                **carbon,
+            }
+        )
 
     return results
 
@@ -107,10 +106,7 @@ def main():
 
     # Filter to specific paddock if requested
     if args.paddock:
-        paddocks = {
-            pid: p for pid, p in paddocks.items()
-            if args.paddock.lower() in p.get("name", "").lower()
-        }
+        paddocks = {pid: p for pid, p in paddocks.items() if args.paddock.lower() in p.get("name", "").lower()}
         if not paddocks:
             print(f"No paddock found matching: {args.paddock}")
             return
@@ -165,25 +161,27 @@ def main():
     print("Farm-Wide Annual Totals")
     print("=" * 80)
     print()
-    print(f"{'Year':>6} {'Area':>8} {'Total GPP':>12} {'Total NPP':>12} "
-          f"{'C Sequestered':>14} {'CO2 Seq':>12}")
+    print(f"{'Year':>6} {'Area':>8} {'Total GPP':>12} {'Total NPP':>12} {'C Sequestered':>14} {'CO2 Seq':>12}")
     print(f"{'':>6} {'(ha)':>8} {'(t C)':>12} {'(t C)':>12} {'(t C)':>14} {'(t CO2)':>12}")
     print("-" * 70)
 
     for year in sorted(farm_totals.keys()):
         t = farm_totals[year]
         seq_co2 = t["seq"] * CO2_PER_C
-        print(f"{year:>6} {t['area']:>8.1f} {t['gpp']:>12.1f} {t['npp']:>12.1f} "
-              f"{t['seq']:>14.2f} {seq_co2:>12.1f}")
+        print(f"{year:>6} {t['area']:>8.1f} {t['gpp']:>12.1f} {t['npp']:>12.1f} {t['seq']:>14.2f} {seq_co2:>12.1f}")
 
     # Save results
     output_file = get_cache_dir() / "carbon_analysis.json"
     with open(output_file, "w") as f:
-        json.dump({
-            "analyzed_at": data.get("fetched_at"),
-            "paddocks": all_results,
-            "farm_totals": farm_totals,
-        }, f, indent=2)
+        json.dump(
+            {
+                "analyzed_at": data.get("fetched_at"),
+                "paddocks": all_results,
+                "farm_totals": farm_totals,
+            },
+            f,
+            indent=2,
+        )
 
     print()
     print(f"Results saved to: {output_file}")
