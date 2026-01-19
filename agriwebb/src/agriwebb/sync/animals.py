@@ -28,7 +28,7 @@ from agriwebb.core import get_cache_dir, graphql, settings
 DEFAULT_CACHE_FILE = "animals.json"
 
 # Concurrency control: max parallel API requests
-MAX_CONCURRENT_REQUESTS = 10
+MAX_CONCURRENT_REQUESTS = 5
 
 # Small delay between paginated requests (seconds)
 PAGINATION_DELAY = 0.1
