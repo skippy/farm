@@ -9,7 +9,6 @@ AgriWebb integration and user-facing commands.
 
 import argparse
 import asyncio
-import sys
 from datetime import UTC, date, datetime, timedelta
 
 from agriwebb.core import get_cache_dir, settings
@@ -87,20 +86,10 @@ async def cmd_sync(args: argparse.Namespace) -> None:
 
     # Push to AgriWebb
     print("\nPushing to AgriWebb...")
-    errors = []
-
     for weather in all_weather:
-        try:
-            await weather_api.add_rainfall(weather["date"], weather["precipitation_inches"])
-        except Exception as e:
-            errors.append((weather["date"], e))
-            print(f"  Error for {weather['date']}: {e}")
+        await weather_api.add_rainfall(weather["date"], weather["precipitation_inches"])
 
-    success_count = len(all_weather) - len(errors)
-    print(f"Completed: {success_count} successful, {len(errors)} errors")
-
-    if errors:
-        sys.exit(1)
+    print(f"Completed: {len(all_weather)} records synced")
 
 
 async def cmd_list(args: argparse.Namespace) -> None:
