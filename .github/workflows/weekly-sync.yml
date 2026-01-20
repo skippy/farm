@@ -46,6 +46,12 @@ jobs:
           restore-keys: |
             agriwebb-data-
 
+      - name: Debug - cache after restore
+        run: |
+          echo "=== Cache after restore ==="
+          ls -la ${{ github.workspace }}/.cache/ 2>/dev/null || echo "Directory not found"
+          du -h ${{ github.workspace }}/.cache/* 2>/dev/null || echo "No files"
+
       - name: Cache animal data from AgriWebb
         env:
           NCEI_STATION_ID: ${{ secrets.NCEI_STATION_ID }}
