@@ -10,9 +10,28 @@ Usage:
 import asyncio
 import json
 from datetime import date, timedelta
+from typing import TypedDict
 
 from agriwebb.core import get_cache_dir, get_fields, settings
 from agriwebb.satellite import gee as satellite
+
+
+class PaddockNDVIData(TypedDict):
+    """NDVI data for a single paddock."""
+
+    name: str
+    area_ha: float | None
+    land_use: str | None
+    history: list[dict]
+
+
+class NDVIHistoricalData(TypedDict):
+    """Historical NDVI data for all paddocks."""
+
+    fetched_at: str
+    start_year: int
+    paddock_count: int
+    paddocks: dict[str, PaddockNDVIData]
 
 
 async def fetch_paddock_history(paddock: dict, start_year: int = 2018) -> list[dict]:
@@ -91,7 +110,7 @@ async def main():
     print()
 
     # Fetch historical data for each paddock
-    all_data = {
+    all_data: NDVIHistoricalData = {
         "fetched_at": date.today().isoformat(),
         "start_year": 2018,
         "paddock_count": len(paddocks),

@@ -36,7 +36,7 @@ Typical Values for Temperate Pastures:
 """
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from enum import Enum
 
@@ -64,10 +64,10 @@ class DietAdjustments:
     """
 
     # Base forage types (relative to standard pasture = 1.0)
-    forage_factors: dict = None
+    forage_factors: dict[str, float] = field(default_factory=dict)
 
     # Feed additives/supplements
-    additive_factors: dict = None
+    additive_factors: dict[str, float] = field(default_factory=dict)
 
     def __post_init__(self):
         # Forage type affects methane yield (Ym - % of gross energy lost as CH4)
@@ -111,7 +111,7 @@ class BreedAdjustments:
     """
 
     # Relative to medium-sized meat breed = 1.0
-    breed_factors: dict = None
+    breed_factors: dict[str, float] = field(default_factory=dict)
 
     def __post_init__(self):
         self.breed_factors = {
@@ -171,7 +171,7 @@ class ClimateAdjustments:
     """
 
     # Relative to temperate (10-20°C avg) = 1.0
-    climate_factors: dict = None
+    climate_factors: dict[str, float] = field(default_factory=dict)
 
     def __post_init__(self):
         self.climate_factors = {

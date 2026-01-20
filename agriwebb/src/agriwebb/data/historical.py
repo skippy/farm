@@ -60,7 +60,7 @@ def load_weather_history() -> list[dict]:
 def calculate_historical_growth(
     weather_data: list[dict],
     soil_awc_mm: float = 45.0,  # Default AWC for average soil
-) -> dict[str, list[float]]:
+) -> dict[str, float]:
     """
     Calculate daily growth rates for all historical weather data.
 

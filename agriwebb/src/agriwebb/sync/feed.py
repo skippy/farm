@@ -20,7 +20,7 @@ import json
 from datetime import date
 
 from agriwebb.core import get_cache_dir
-from agriwebb.data.grazing import calculate_paddock_consumption, load_farm_data, load_fields
+from agriwebb.data.grazing import PaddockConsumption, calculate_paddock_consumption, load_farm_data, load_fields
 from agriwebb.pasture import add_feed_on_offer_batch, add_standing_dry_matter_batch
 from agriwebb.pasture.biomass import (
     EXPECTED_UNCERTAINTY,
@@ -52,7 +52,7 @@ def load_field_mapping() -> dict[str, str]:
     return {f["name"]: f["id"] for f in data.get("fields", [])}
 
 
-def get_grazing_consumption() -> dict[str, dict]:
+def get_grazing_consumption() -> dict[str, PaddockConsumption]:
     """
     Get current grazing consumption by paddock.
 

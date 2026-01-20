@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import TypedDict
 
 from agriwebb.core import get_cache_dir
+from agriwebb.weather.openmeteo import DailyWeather
 
 # -----------------------------------------------------------------------------
 # Constants and Configuration
@@ -201,7 +202,7 @@ class SoilWaterState:
             self.current_mm = self.awc_mm * 0.5
 
     @classmethod
-    def from_soil_data(cls, soil: dict, root_depth_mm: float = 300.0) -> "SoilWaterState":
+    def from_soil_data(cls, soil: dict, root_depth_mm: float = 300.0) -> SoilWaterState:
         """Create from paddock soil data."""
         awc_cm_cm = float(soil.get("awc_cm_cm") or 0.15)  # default if missing
         awc_mm = awc_cm_cm * root_depth_mm
@@ -350,7 +351,7 @@ class PaddockGrowthModel:
     organic_matter_pct: float | None = None
 
     @classmethod
-    def from_paddock_data(cls, paddock: dict, soil: dict | None = None) -> "PaddockGrowthModel":
+    def from_paddock_data(cls, paddock: dict, soil: dict | None = None) -> PaddockGrowthModel:
         """Create model from paddock and soil data."""
         soil = soil or {}
         soil_data = soil.get("soil", {})
@@ -442,7 +443,7 @@ def calculate_farm_growth(
     start_date: date,
     end_date: date,
     paddock_soils: dict | None = None,
-    weather_data: list[dict] | None = None,
+    weather_data: list[DailyWeather] | None = None,
 ) -> dict[str, list[DailyGrowthResult]]:
     """
     Calculate daily growth for all paddocks over a date range.

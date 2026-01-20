@@ -120,10 +120,13 @@ def create_summary_chart():
         else:
             bar_colors.append("#e74c3c")
 
-    bars = ax3.bar(categories, [abs(v) for v in values], bottom=starts, color=bar_colors, edgecolor="white", linewidth=1)
+    bars = ax3.bar(
+        categories, [abs(v) for v in values], bottom=starts,
+        color=bar_colors, edgecolor="white", linewidth=1
+    )
 
     # Add value labels on bars
-    for i, (bar, val) in enumerate(zip(bars, values)):
+    for bar, val in zip(bars, values, strict=True):
         height = bar.get_height()
         y_pos = bar.get_y() + height / 2
         label = f"+{val:.0f}" if val > 0 else f"{val:.0f}"
@@ -145,16 +148,21 @@ def create_summary_chart():
     x = np.arange(len(scenarios))
     width = 0.35
 
-    bars1 = ax4.bar(x - width/2, [complete["pasture_sequestration_t_co2"]["low"] + rotational_bonus + manure_c + avoided_fert,
-                                   complete["pasture_sequestration_t_co2"]["mid"] + rotational_bonus + manure_c + avoided_fert,
-                                   complete["pasture_sequestration_t_co2"]["high"] + rotational_bonus + manure_c + avoided_fert],
-                    width, label="C Sinks", color="#2ecc71")
+    seq = complete["pasture_sequestration_t_co2"]
+    bonus = rotational_bonus + manure_c + avoided_fert
+    sink_values = [seq["low"] + bonus, seq["mid"] + bonus, seq["high"] + bonus]
+    bars1 = ax4.bar(
+        x - width / 2, sink_values, width, label="C Sinks", color="#2ecc71"
+    )
     bars2 = ax4.bar(x + width/2, [emission_value] * 3, width, label="Emissions", color="#e74c3c")
 
     # Add net values as text
-    for i, (net, scenario) in enumerate(zip(net_values, scenarios)):
-        ax4.annotate(f"Net: +{net:.0f}", xy=(i, max(bars1[i].get_height(), bars2[i].get_height()) + 20),
-                    ha="center", fontsize=10, fontweight="bold", color="#3498db")
+    for i, net in enumerate(net_values):
+        ax4.annotate(
+            f"Net: +{net:.0f}",
+            xy=(i, max(bars1[i].get_height(), bars2[i].get_height()) + 20),
+            ha="center", fontsize=10, fontweight="bold", color="#3498db"
+        )
 
     ax4.set_ylabel("t CO2eq/yr")
     ax4.set_xticks(x)
@@ -172,7 +180,7 @@ def create_summary_chart():
         f"Net balance: +{net_mid:.0f} t CO2/yr (mid)"
     )
 
-    props = dict(boxstyle="round,pad=0.5", facecolor="wheat", alpha=0.8)
+    props = {"boxstyle": "round,pad=0.5", "facecolor": "wheat", "alpha": 0.8}
     fig.text(0.98, 0.02, farm_info, fontsize=9, verticalalignment="bottom",
              horizontalalignment="right", bbox=props, family="monospace")
 

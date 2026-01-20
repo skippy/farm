@@ -54,7 +54,7 @@ def load_weather_data():
             stats['growing_degree_days'] += record['temp_mean_c'] - 5
 
     # Calculate averages
-    for year, stats in yearly_stats.items():
+    for _year, stats in yearly_stats.items():
         stats['avg_temp_c'] = stats['temp_sum'] / stats['days']
         stats['cold_day_fraction'] = stats['cold_days'] / stats['days']
         del stats['temp_sum']
@@ -128,12 +128,14 @@ def calculate_soil_carbon_from_tests(soil_tests):
         if field not in field_carbon:
             field_carbon[field] = []
 
+        total_n = test['total_n_lbs_acre']
+        cn_ratio = round((om_pct * 20000 * 0.58) / total_n, 1) if total_n else None
         field_carbon[field].append({
             'date': date,
             'om_pct': om_pct,
             'carbon_pct': round(carbon_pct, 2),
-            'total_n_lbs_acre': test['total_n_lbs_acre'],
-            'cn_ratio_estimate': round((om_pct * 20000 * 0.58) / test['total_n_lbs_acre'], 1) if test['total_n_lbs_acre'] else None
+            'total_n_lbs_acre': total_n,
+            'cn_ratio_estimate': cn_ratio
         })
 
     return field_carbon
@@ -253,10 +255,19 @@ def update_carbon_report(report, weather_dmi, field_carbon, om_changes, yearly_w
     # Add findings based on OM changes
     findings = report['soil_test_analysis']['key_findings']
     for field, change in om_changes.items():
+        years = change['years_between']
         if change['status'] == 'declining':
-            findings.append(f"{field}: OM declined {abs(change['om_change_pct'])}% over {change['years_between']} years (from {change['earliest_om_pct']}% to {change['latest_om_pct']}%)")
+            om_delta = abs(change['om_change_pct'])
+            om_from = change['earliest_om_pct']
+            om_to = change['latest_om_pct']
+            findings.append(
+                f"{field}: OM declined {om_delta}% over {years} years "
+                f"(from {om_from}% to {om_to}%)"
+            )
         elif change['status'] == 'increasing':
-            findings.append(f"{field}: OM increased {change['om_change_pct']}% over {change['years_between']} years")
+            findings.append(
+                f"{field}: OM increased {change['om_change_pct']}% over {years} years"
+            )
 
     # Add soil carbon stock estimate for tested fields
     # Assume 30cm depth, bulk density 1.2 g/cm³
