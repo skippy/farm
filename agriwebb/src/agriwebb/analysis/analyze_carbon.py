@@ -17,7 +17,7 @@ from agriwebb.analysis.carbon import (
 from agriwebb.core import get_cache_dir
 
 
-def analyze_paddock_carbon(paddock_data: dict, year: int | None = None) -> dict:
+def analyze_paddock_carbon(paddock_data: dict, year: int | None = None) -> list[dict] | None:
     """Analyze carbon metrics for a single paddock."""
     history = paddock_data.get("history", [])
 
