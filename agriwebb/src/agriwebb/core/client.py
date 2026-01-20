@@ -217,6 +217,18 @@ async def get_farm_location() -> tuple[float, float]:
     return location["lat"], location["long"]
 
 
+async def get_farm_timezone() -> str:
+    """Get farm timezone from settings or AgriWebb.
+
+    Returns IANA timezone string (e.g., "America/Los_Angeles").
+    Checks TZ environment variable first, falls back to AgriWebb farm data.
+    """
+    if settings.tz:
+        return settings.tz
+    farm = await get_farm()
+    return farm.get("timeZone", "UTC")
+
+
 async def get_map_feature(feature_id: str) -> dict:
     """Fetch a map feature by ID."""
     variables = {"featureId": feature_id}

@@ -47,5 +47,9 @@ class Settings(BaseSettings):
     # Google Earth Engine
     gee_project_id: str | None = None  # GEE Cloud Project ID
 
+    # Farm timezone (IANA format, e.g., "America/Los_Angeles")
+    # If not set, will be fetched from AgriWebb farm data
+    tz: str | None = None
+
 
 settings = Settings()
