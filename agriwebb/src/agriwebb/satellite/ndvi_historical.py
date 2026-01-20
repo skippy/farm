@@ -13,6 +13,7 @@ from datetime import date, timedelta
 from typing import TypedDict
 
 from agriwebb.core import get_cache_dir, get_fields, settings
+from agriwebb.satellite import gee as satellite
 
 
 class PaddockNDVIData(TypedDict):
@@ -31,9 +32,6 @@ class NDVIHistoricalData(TypedDict):
     start_year: int
     paddock_count: int
     paddocks: dict[str, PaddockNDVIData]
-
-
-from agriwebb.satellite import gee as satellite
 
 
 async def fetch_paddock_history(paddock: dict, start_year: int = 2018) -> list[dict]:
