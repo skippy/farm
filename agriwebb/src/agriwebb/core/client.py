@@ -69,7 +69,7 @@ query GetFarms {
 """
 
 MAP_FEATURE_QUERY = """
-query GetMapFeature($featureId: ID!) {
+query GetMapFeature($featureId: String!) {
   mapFeatures(filter: { id: { _eq: $featureId } }) {
     id
     name
@@ -82,7 +82,7 @@ query GetMapFeature($featureId: ID!) {
 """
 
 FIELDS_QUERY = """
-query GetFields($farmId: ID!) {
+query GetFields($farmId: String!) {
   fields(filter: { farmId: { _eq: $farmId } }) {
     id
     name
