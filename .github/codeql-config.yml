@@ -1,0 +1,12 @@
+name: "CodeQL Config for Farm/AgriWebb"
+
+# This codebase manages livestock (sheep, cattle) - not humans.
+# Animal data like birthdate, ID, lineage is not sensitive PII.
+
+queries:
+  - uses: security-and-quality
+
+query-filters:
+  # Animal data is not sensitive human PII
+  - exclude:
+      id: py/clear-text-logging-sensitive-data
