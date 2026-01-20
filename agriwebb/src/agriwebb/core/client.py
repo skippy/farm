@@ -179,11 +179,17 @@ async def graphql_with_retry(query: str, variables: dict | None = None) -> dict:
     except httpx.ConnectError as e:
         raise RetryableError(f"Connection failed: {e}") from e
     except httpx.HTTPStatusError as e:
+        # Try to get the response body for better error messages
+        try:
+            body = e.response.text
+        except Exception:
+            body = "(unable to read response body)"
+
         if e.response.status_code >= 500:
             # Server error - retry with backoff
-            raise RetryableError(f"HTTP {e.response.status_code}") from e
-        # Client error (4xx) - don't retry
-        raise AgriWebbAPIError(f"HTTP {e.response.status_code}: {e}") from e
+            raise RetryableError(f"HTTP {e.response.status_code}: {body}") from e
+        # Client error (4xx) - don't retry, include full response
+        raise AgriWebbAPIError(f"HTTP {e.response.status_code}: {body}") from e
     except GraphQLError as e:
         # Check if this is a server error we should retry
         if any("Internal Server Error" in err.get("message", "") for err in e.errors):
