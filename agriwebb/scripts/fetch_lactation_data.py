@@ -175,7 +175,7 @@ def calculate_monthly_lactating_ewes(lactation_periods: dict, start_year: int = 
             check_date = datetime(year, month, 15)
 
             count = 0
-            for dam_id, periods in lactation_periods.items():
+            for _dam_id, periods in lactation_periods.items():
                 for period in periods:
                     if period["start"] <= check_date <= period["end"]:
                         count += 1
@@ -236,7 +236,7 @@ async def main():
 
     # Try direct birth records first
     print("\n1. Checking for birth records...")
-    birth_records = await get_birth_records()
+    await get_birth_records()  # Check if API has direct birth records
 
     # Derive from offspring if no direct records
     print("\n2. Deriving births from offspring data...")
@@ -272,12 +272,16 @@ async def main():
     print("-" * 55)
 
     for year, data in sorted(annual_adjustments.items()):
-        print(f"{year:<8} {data['avg_lactating_ewes']:>10.1f}     {data['lactation_fraction']:>8.1%}     {data['methane_adjustment_factor']:>10.2%}")
+        avg_ewes = data['avg_lactating_ewes']
+        frac = data['lactation_fraction']
+        adj = data['methane_adjustment_factor']
+        print(f"{year:<8} {avg_ewes:>10.1f}     {frac:>8.1%}     {adj:>10.2%}")
 
     # Calculate overall average adjustment
-    recent_years = [y for y in annual_adjustments.keys() if int(y) >= 2022]
+    recent_years = [y for y in annual_adjustments if int(y) >= 2022]
     if recent_years:
-        avg_adjustment = sum(annual_adjustments[y]['methane_adjustment_factor'] for y in recent_years) / len(recent_years)
+        adjustments = [annual_adjustments[y]['methane_adjustment_factor'] for y in recent_years]
+        avg_adjustment = sum(adjustments) / len(recent_years)
         print("-" * 55)
         print(f"{'Avg (2022+)':<8} {'':<15} {'':<12} {avg_adjustment:>10.2%}")
 
