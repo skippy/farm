@@ -105,7 +105,7 @@ jobs:
         if: always()
         with:
           name: agriwebb-cache
-          path: agriwebb/.cache
+          path: .cache
           retention-days: 7
 
       - name: Summary
