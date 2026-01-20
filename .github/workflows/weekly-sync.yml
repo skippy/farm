@@ -100,6 +100,14 @@ jobs:
           path: .cache
           key: agriwebb-data-${{ github.run_id }}
 
+      - name: Upload cache as artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: agriwebb-cache
+          path: .cache
+          retention-days: 7
+
       - name: Summary
         if: always()
         run: |
