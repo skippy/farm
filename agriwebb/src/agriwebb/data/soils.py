@@ -8,15 +8,12 @@ service to get soil map unit data for each paddock's location.
 import asyncio
 import json
 import re
+from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 
 import httpx
 
 from agriwebb.core import get_cache_dir, get_fields
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
 
 USDA_SOIL_URL = "https://SDMDataAccess.sc.egov.usda.gov/TABULAR/post.rest"
 

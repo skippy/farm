@@ -2,16 +2,13 @@
 
 import json
 from datetime import UTC, date, datetime, timedelta
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 import httpx
 
 from agriwebb.config import settings
 from agriwebb.core import get_cache_dir
 from agriwebb.weather import api as weather_api
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 NCEI_API_URL = "https://www.ncei.noaa.gov/access/services/data/v1"
 

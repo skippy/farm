@@ -27,12 +27,10 @@ import json
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from enum import Enum
-from typing import TYPE_CHECKING, TypedDict
+from pathlib import Path
+from typing import TypedDict
 
 from agriwebb.core import get_cache_dir
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 # -----------------------------------------------------------------------------
 # Constants and Configuration
