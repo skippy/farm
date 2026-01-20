@@ -85,13 +85,15 @@ async def estimate_current_growth(
             print("No animal data found - skipping grazing consumption")
             include_grazing = False
 
+    # Use yesterday as end date for historical data - today's data is incomplete
     today = date.today()
-    start_date = today - timedelta(days=days_back)
+    end_date = today - timedelta(days=1)
+    start_date = end_date - timedelta(days=days_back - 1)
 
-    print(f"\nCalculating growth for {start_date} to {today}...")
+    print(f"\nCalculating growth for {start_date} to {end_date}...")
     results = calculate_farm_growth(
         start_date=start_date,
-        end_date=today,
+        end_date=end_date,
         paddock_soils=paddock_soils,
         weather_data=weather_data["daily_data"],
     )
@@ -99,7 +101,7 @@ async def estimate_current_growth(
     current_estimates = {}
     for name, daily_results in results.items():
         if daily_results:
-            recent = [r for r in daily_results if r["date"] <= today.isoformat()]
+            recent = [r for r in daily_results if r["date"] <= end_date.isoformat()]
             if recent:
                 latest = recent[-1]
                 week_growth = [r["growth_kg_ha_day"] for r in recent[-7:]]

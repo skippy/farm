@@ -59,8 +59,9 @@ async def cmd_sync(args: argparse.Namespace) -> None:
         return
 
     push_to_agriwebb = not args.dry_run
-    end_date = date.today()
-    start_date = end_date - timedelta(days=total_days)
+    # Use yesterday as end date - today's data is incomplete
+    end_date = date.today() - timedelta(days=1)
+    start_date = end_date - timedelta(days=total_days - 1)
 
     print(f"Syncing rainfall from {start_date} to {end_date}...")
     print(f"Sources: NOAA station {settings.ncei_station_id} + Open-Meteo")
