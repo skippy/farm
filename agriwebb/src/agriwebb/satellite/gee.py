@@ -203,13 +203,15 @@ def _calculate_tree_cover_pct(geometry: ee.Geometry, scale: int = 30) -> float |
         reducer=ee.Reducer.mean(),
         geometry=geometry,
         scale=scale,
-        maxPixels=1e8,
+        maxPixels=int(1e8),
     )
 
     try:
-        tree_fraction = stats.getInfo().get("landcover")
-        if tree_fraction is not None:
-            return round(tree_fraction * 100, 1)
+        result = stats.getInfo()
+        if result:
+            tree_fraction = result.get("landcover")
+            if tree_fraction is not None:
+                return round(tree_fraction * 100, 1)
     except Exception:
         pass
 
@@ -323,11 +325,11 @@ def extract_paddock_ndvi(
         .combine(ee.Reducer.count(), sharedInputs=True),
         geometry=geometry,
         scale=scale,
-        maxPixels=1e8,
+        maxPixels=int(1e8),
     )
 
     # Get values (returns None if no valid pixels)
-    stats_dict = stats.getInfo()
+    stats_dict = stats.getInfo() or {}
 
     # Calculate approximate cloud-free percentage
     # (ratio of valid pixels to expected pixels based on area)

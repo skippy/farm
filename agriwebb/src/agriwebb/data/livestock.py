@@ -15,6 +15,7 @@ import json
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
+from typing import TypedDict
 
 from agriwebb.core import (
     get_cache_dir,
@@ -1089,7 +1090,17 @@ def format_lineage_tree(animal: dict, indent: int = 0) -> str:
     return "\n".join(lines)
 
 
-def summarize_animals(animals: list[dict]) -> dict:
+class AnimalSummary(TypedDict):
+    """Summary statistics for a list of animals."""
+
+    total: int
+    by_species: dict[str, int]
+    by_breed: dict[str, int]
+    by_sex: dict[str, int]
+    by_status: dict[str, int]
+
+
+def summarize_animals(animals: list[dict]) -> AnimalSummary:
     """
     Generate summary statistics for a list of animals.
 
@@ -1099,7 +1110,7 @@ def summarize_animals(animals: list[dict]) -> dict:
     Returns:
         Summary dict with counts by species, breed, sex, status
     """
-    summary = {
+    summary: AnimalSummary = {
         "total": len(animals),
         "by_species": {},
         "by_breed": {},

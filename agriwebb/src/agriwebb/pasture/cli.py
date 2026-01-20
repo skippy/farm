@@ -8,6 +8,7 @@ import argparse
 import asyncio
 import json
 from datetime import date, timedelta
+from typing import TypedDict
 
 from agriwebb.core import (
     get_cache_dir,
@@ -529,6 +530,24 @@ async def update_noaa_cache_smart(refresh: bool = False) -> None:
         print("    No NOAA data available")
 
 
+class PaddockNDVIData(TypedDict):
+    """NDVI data for a single paddock."""
+
+    name: str
+    area_ha: float | None
+    land_use: str | None
+    history: list[dict]
+
+
+class NDVIHistoricalData(TypedDict):
+    """Historical NDVI data for all paddocks."""
+
+    fetched_at: str
+    start_year: int
+    paddock_count: int
+    paddocks: dict[str, PaddockNDVIData]
+
+
 async def update_ndvi_cache_smart(refresh: bool = False) -> None:
     """Update NDVI historical cache smartly (only fetch missing months)."""
     import json
@@ -556,7 +575,7 @@ async def update_ndvi_cache_smart(refresh: bool = False) -> None:
     print(f"Found {len(paddocks)} paddocks")
     print()
 
-    all_data = {
+    all_data: NDVIHistoricalData = {
         "fetched_at": today.isoformat(),
         "start_year": 2018,
         "paddock_count": len(paddocks),

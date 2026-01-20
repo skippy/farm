@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import TypedDict
 
 from agriwebb.core import get_cache_dir
+from agriwebb.weather.openmeteo import DailyWeather
 
 # -----------------------------------------------------------------------------
 # Constants and Configuration
@@ -442,7 +443,7 @@ def calculate_farm_growth(
     start_date: date,
     end_date: date,
     paddock_soils: dict | None = None,
-    weather_data: list[dict] | None = None,
+    weather_data: list[DailyWeather] | None = None,
 ) -> dict[str, list[DailyGrowthResult]]:
     """
     Calculate daily growth for all paddocks over a date range.
