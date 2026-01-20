@@ -1,5 +1,8 @@
 """AgriWebb API client - core functions only."""
 
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
+
 import httpx
 from tenacity import (
     retry,
@@ -217,16 +220,33 @@ async def get_farm_location() -> tuple[float, float]:
     return location["lat"], location["long"]
 
 
-async def get_farm_timezone() -> str:
+_cached_farm_tz: ZoneInfo | None = None
+
+
+async def get_farm_timezone() -> ZoneInfo:
     """Get farm timezone from settings or AgriWebb.
 
-    Returns IANA timezone string (e.g., "America/Los_Angeles").
+    Returns ZoneInfo object, cached for the session.
     Checks TZ environment variable first, falls back to AgriWebb farm data.
     """
+    global _cached_farm_tz
+    if _cached_farm_tz is not None:
+        return _cached_farm_tz
+
     if settings.tz:
-        return settings.tz
-    farm = await get_farm()
-    return farm.get("timeZone", "UTC")
+        tz_name = settings.tz
+    else:
+        farm = await get_farm()
+        tz_name = farm.get("timeZone", "UTC")
+
+    _cached_farm_tz = ZoneInfo(tz_name)
+    return _cached_farm_tz
+
+
+async def get_farm_date() -> date:
+    """Get today's date in the farm's timezone."""
+    tz = await get_farm_timezone()
+    return datetime.now(tz).date()
 
 
 async def get_map_feature(feature_id: str) -> dict:

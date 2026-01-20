@@ -7,12 +7,11 @@ into a single interface.
 import argparse
 import asyncio
 import json
-from datetime import date, datetime, timedelta
-from zoneinfo import ZoneInfo
+from datetime import date, timedelta
 
 from agriwebb.core import (
     get_cache_dir,
-    get_farm_timezone,
+    get_farm_date,
     get_fields,
     settings,
 )
@@ -32,18 +31,6 @@ from agriwebb.pasture.growth import (
     load_paddock_soils,
 )
 from agriwebb.weather import fetch_ncei_date_range, openmeteo, save_weather_json
-
-# Cache for farm timezone (fetched once per session)
-_farm_tz: ZoneInfo | None = None
-
-
-async def _get_farm_tz() -> ZoneInfo:
-    """Get farm timezone as ZoneInfo, caching for the session."""
-    global _farm_tz
-    if _farm_tz is None:
-        tz_name = await get_farm_timezone()
-        _farm_tz = ZoneInfo(tz_name)
-    return _farm_tz
 
 
 def load_fields_for_sync() -> dict[str, str]:
@@ -100,8 +87,7 @@ async def estimate_current_growth(
             include_grazing = False
 
     # Use yesterday in farm's local timezone - ensures full day of data
-    farm_tz = await _get_farm_tz()
-    today = datetime.now(farm_tz).date()
+    today = await get_farm_date()
     end_date = today - timedelta(days=1)
     start_date = end_date - timedelta(days=days_back - 1)
 
@@ -378,8 +364,7 @@ async def sync_sdm(args: argparse.Namespace) -> None:
     paddocks = await get_fields(min_area_ha=0.2)
     print(f"Found {len(paddocks)} paddocks\n")
 
-    farm_tz = await _get_farm_tz()
-    today = datetime.now(farm_tz).date()
+    today = await get_farm_date()
     processing_lag = 7  # Satellite data is typically delayed
     window_days = getattr(args, "window", 14) or 14
 
@@ -500,8 +485,7 @@ async def update_noaa_cache_smart(refresh: bool = False) -> None:
 
     cache_path = get_cache_dir() / "noaa_weather.json"
     # Use yesterday in farm's local timezone
-    farm_tz = await _get_farm_tz()
-    end_date = datetime.now(farm_tz).date() - timedelta(days=1)
+    end_date = await get_farm_date() - timedelta(days=1)
 
     # Load existing cache
     existing_dates = set()
@@ -553,8 +537,7 @@ async def update_ndvi_cache_smart(refresh: bool = False) -> None:
     from agriwebb.satellite.ndvi_historical import fetch_paddock_history
 
     cache_path = get_cache_dir() / "ndvi_historical.json"
-    farm_tz = await _get_farm_tz()
-    today = datetime.now(farm_tz).date()
+    today = await get_farm_date()
 
     # Load existing cache
     existing_data = None

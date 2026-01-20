@@ -10,23 +10,10 @@ AgriWebb integration and user-facing commands.
 import argparse
 import asyncio
 from datetime import UTC, date, datetime, timedelta
-from zoneinfo import ZoneInfo
 
-from agriwebb.core import get_cache_dir, get_farm_timezone, settings
+from agriwebb.core import get_cache_dir, get_farm_date, settings
 from agriwebb.weather import api as weather_api
 from agriwebb.weather import ncei, openmeteo
-
-# Cache for farm timezone (fetched once per session)
-_farm_tz: ZoneInfo | None = None
-
-
-async def _get_farm_tz() -> ZoneInfo:
-    """Get farm timezone as ZoneInfo, caching for the session."""
-    global _farm_tz
-    if _farm_tz is None:
-        tz_name = await get_farm_timezone()
-        _farm_tz = ZoneInfo(tz_name)
-    return _farm_tz
 
 
 async def cmd_current(args: argparse.Namespace) -> None:
@@ -73,8 +60,7 @@ async def cmd_sync(args: argparse.Namespace) -> None:
 
     push_to_agriwebb = not args.dry_run
     # Use yesterday in farm's local timezone - ensures full day of data
-    farm_tz = await _get_farm_tz()
-    today_local = datetime.now(farm_tz).date()
+    today_local = await get_farm_date()
     end_date = today_local - timedelta(days=1)
     start_date = end_date - timedelta(days=total_days - 1)
 
@@ -163,8 +149,7 @@ async def update_noaa_cache(refresh: bool = False) -> None:
 
     cache_path = get_cache_dir() / "noaa_weather.json"
     # Use yesterday in farm's local timezone
-    farm_tz = await _get_farm_tz()
-    end_date = datetime.now(farm_tz).date() - timedelta(days=1)
+    end_date = await get_farm_date() - timedelta(days=1)
 
     # Load existing cache
     existing_dates = set()
