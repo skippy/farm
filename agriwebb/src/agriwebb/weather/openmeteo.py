@@ -9,12 +9,14 @@ API Documentation: https://open-meteo.com/en/docs
 
 import json
 from datetime import date, datetime, timedelta
-from pathlib import Path
-from typing import TypedDict
+from typing import TYPE_CHECKING, TypedDict
 
 import httpx
 
 from agriwebb.core import get_cache_dir
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 # API endpoints
 HISTORICAL_API = "https://archive-api.open-meteo.com/v1/archive"

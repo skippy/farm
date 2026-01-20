@@ -12,10 +12,12 @@ Then aggregates consumption by paddock to estimate grazing pressure.
 
 import json
 from datetime import date, datetime, timedelta
-from pathlib import Path
-from typing import TypedDict
+from typing import TYPE_CHECKING, TypedDict
 
 from agriwebb.core import get_cache_dir
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 # Default weights by age class (kg) when no weight record available
 DEFAULT_WEIGHTS = {

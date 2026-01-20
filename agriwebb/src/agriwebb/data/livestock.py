@@ -12,15 +12,18 @@ Provides functions to fetch and analyze animal data including:
 import asyncio
 import contextlib
 import json
-from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from agriwebb.core import (
     get_cache_dir,
     graphql_with_retry,
     settings,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 # =============================================================================
 # Configuration Constants

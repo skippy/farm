@@ -2,7 +2,7 @@
 name = "agriwebb"
 version = "0.1.0"
 description = "AgriWebb integration tools"
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 dependencies = [
     "httpx>=0.28.1",
     "pydantic-settings>=2.12.0",
@@ -43,7 +43,7 @@ source = ["agriwebb"]
 omit = ["*/__init__.py"]
 
 [tool.ty.environment]
-python-version = "3.12"
+python-version = "3.14"
 python = "../.venv"
 
 # Suppress false positives for pydantic-settings (loads from env vars)
@@ -53,7 +53,7 @@ include = ["src/agriwebb/config.py", "src/agriwebb/core/config.py"]
 missing-argument = "ignore"
 
 [tool.ruff]
-target-version = "py312"
+target-version = "py314"
 line-length = 120
 
 [tool.ruff.lint]

@@ -27,10 +27,12 @@ import json
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from enum import Enum
-from pathlib import Path
-from typing import TypedDict
+from typing import TYPE_CHECKING, TypedDict
 
 from agriwebb.core import get_cache_dir
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 # -----------------------------------------------------------------------------
 # Constants and Configuration
@@ -201,7 +203,7 @@ class SoilWaterState:
             self.current_mm = self.awc_mm * 0.5
 
     @classmethod
-    def from_soil_data(cls, soil: dict, root_depth_mm: float = 300.0) -> "SoilWaterState":
+    def from_soil_data(cls, soil: dict, root_depth_mm: float = 300.0) -> SoilWaterState:
         """Create from paddock soil data."""
         awc_cm_cm = float(soil.get("awc_cm_cm") or 0.15)  # default if missing
         awc_mm = awc_cm_cm * root_depth_mm
@@ -350,7 +352,7 @@ class PaddockGrowthModel:
     organic_matter_pct: float | None = None
 
     @classmethod
-    def from_paddock_data(cls, paddock: dict, soil: dict | None = None) -> "PaddockGrowthModel":
+    def from_paddock_data(cls, paddock: dict, soil: dict | None = None) -> PaddockGrowthModel:
         """Create model from paddock and soil data."""
         soil = soil or {}
         soil_data = soil.get("soil", {})

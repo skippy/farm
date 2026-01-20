@@ -12,12 +12,15 @@ Strategy: Use Open-Meteo for recent days, overwrite with NOAA when available.
 
 import json
 from datetime import UTC, date, datetime, timedelta
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import httpx
 
 from agriwebb.core import get_cache_dir, settings
 from agriwebb.weather import openmeteo
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 NCEI_API_URL = "https://www.ncei.noaa.gov/access/services/data/v1"
 
