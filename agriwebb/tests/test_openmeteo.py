@@ -241,11 +241,11 @@ class TestAPIEndpoints:
     def test_historical_api_url(self):
         """Historical API uses archive endpoint."""
         assert "archive" in HISTORICAL_API
-        assert "open-meteo.com" in HISTORICAL_API
+        assert "open-meteo.com" in HISTORICAL_API  # codeql[py/incomplete-url-substring-sanitization]
 
     def test_forecast_api_url(self):
         """Forecast API uses main endpoint."""
-        assert "api.open-meteo.com" in FORECAST_API
+        assert "api.open-meteo.com" in FORECAST_API  # codeql[py/incomplete-url-substring-sanitization]
         assert "forecast" in FORECAST_API
 
     def test_default_location_is_san_juan(self):

@@ -10,6 +10,3 @@ query-filters:
   # Animal data is not sensitive human PII
   - exclude:
       id: py/clear-text-logging-sensitive-data
-  # Test files use mock URLs that don't need sanitization
-  - exclude:
-      id: py/incomplete-url-substring-sanitization
