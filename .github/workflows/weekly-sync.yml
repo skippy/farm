@@ -107,6 +107,7 @@ jobs:
           name: agriwebb-cache
           path: .cache
           retention-days: 7
+          include-hidden-files: true
 
       - name: Summary
         if: always()
