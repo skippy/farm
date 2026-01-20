@@ -243,7 +243,7 @@ async def get_farm_timezone() -> ZoneInfo:
     return _cached_farm_tz
 
 
-async def get_farm_date() -> date:
+async def get_farm_today() -> date:
     """Get today's date in the farm's timezone."""
     tz = await get_farm_timezone()
     return datetime.now(tz).date()
