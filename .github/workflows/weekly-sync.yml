@@ -46,12 +46,6 @@ jobs:
           restore-keys: |
             agriwebb-data-
 
-      - name: Debug - cache after restore
-        run: |
-          echo "=== Cache after restore ==="
-          ls -la ${{ github.workspace }}/.cache/ 2>/dev/null || echo "Directory not found"
-          du -h ${{ github.workspace }}/.cache/* 2>/dev/null || echo "No files"
-
       - name: Cache animal data from AgriWebb
         env:
           NCEI_STATION_ID: ${{ secrets.NCEI_STATION_ID }}
@@ -95,15 +89,6 @@ jobs:
           else
             uv run agriwebb-weather sync --days 14
           fi
-
-      - name: Debug - list cache contents
-        if: always()
-        run: |
-          echo "=== Cache directory contents ==="
-          ls -la ${{ github.workspace }}/.cache/ || echo "Directory not found"
-          echo ""
-          echo "=== File sizes ==="
-          du -h ${{ github.workspace }}/.cache/* 2>/dev/null || echo "No files"
 
       - name: Save data cache
         uses: actions/cache/save@v4
