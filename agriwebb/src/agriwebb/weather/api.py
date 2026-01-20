@@ -9,7 +9,7 @@ from agriwebb.core.config import settings
 # =============================================================================
 
 CREATE_RAIN_GAUGE_MUTATION = """
-mutation CreateRainGauge($farmId: ID!, $name: String!, $lat: Float!, $lng: Float!) {
+mutation CreateRainGauge($farmId: String!, $name: String!, $lat: Float!, $lng: Float!) {
   addMapFeatures(input: {
     farmId: $farmId
     features: [{
@@ -45,7 +45,7 @@ mutation AddRainfall($farmId: String!, $sensorId: String!, $value: Float!, $time
 """
 
 RAINFALLS_QUERY = """
-query GetRainfalls($farmId: ID!, $sensorId: ID!) {
+query GetRainfalls($farmId: String!, $sensorId: String!) {
   rainfalls(filter: {
     farmId: { _eq: $farmId }
     sensorId: { _eq: $sensorId }

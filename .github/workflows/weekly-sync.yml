@@ -41,7 +41,7 @@ jobs:
       - name: Restore data cache
         uses: actions/cache/restore@v4
         with:
-          path: .cache
+          path: ${{ github.workspace }}/.cache
           key: agriwebb-data-${{ github.run_id }}
           restore-keys: |
             agriwebb-data-
@@ -51,9 +51,7 @@ jobs:
           NCEI_STATION_ID: ${{ secrets.NCEI_STATION_ID }}
           AGRIWEBB_API_KEY: ${{ secrets.AGRIWEBB_API_KEY }}
           AGRIWEBB_FARM_ID: ${{ secrets.AGRIWEBB_FARM_ID }}
-        run: |
-          mkdir -p .cache
-          uv run agriwebb-livestock cache --refresh
+        run: uv run agriwebb-livestock cache --refresh
 
       - name: Set up Google Earth Engine credentials
         env:
@@ -73,7 +71,6 @@ jobs:
           GEE_PROJECT_ID: ${{ secrets.GEE_PROJECT_ID }}
           GEE_SERVICE_ACCOUNT_KEY: ${{ secrets.GEE_SERVICE_ACCOUNT_KEY }}
         run: |
-          mkdir -p .cache
           if [ "${{ inputs.dry_run }}" = "true" ]; then
             uv run agriwebb-pasture sync --sdm --dry-run
           else
@@ -97,8 +94,17 @@ jobs:
         uses: actions/cache/save@v4
         if: always()
         with:
-          path: .cache
+          path: ${{ github.workspace }}/.cache
           key: agriwebb-data-${{ github.run_id }}
+
+      - name: Upload cache as artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: agriwebb-cache
+          path: ${{ github.workspace }}/.cache
+          retention-days: 7
+          include-hidden-files: true
 
       - name: Summary
         if: always()

@@ -11,7 +11,7 @@ import argparse
 import asyncio
 from datetime import UTC, date, datetime, timedelta
 
-from agriwebb.core import get_cache_dir, settings
+from agriwebb.core import get_cache_dir, get_farm_today, settings
 from agriwebb.weather import api as weather_api
 from agriwebb.weather import ncei, openmeteo
 
@@ -59,8 +59,9 @@ async def cmd_sync(args: argparse.Namespace) -> None:
         return
 
     push_to_agriwebb = not args.dry_run
-    # Use yesterday as end date - today's data is incomplete
-    end_date = date.today() - timedelta(days=1)
+    # Use yesterday in farm's local timezone - ensures full day of data
+    today_local = await get_farm_today()
+    end_date = today_local - timedelta(days=1)
     start_date = end_date - timedelta(days=total_days - 1)
 
     print(f"Syncing rainfall from {start_date} to {end_date}...")
@@ -147,7 +148,8 @@ async def update_noaa_cache(refresh: bool = False) -> None:
     import json
 
     cache_path = get_cache_dir() / "noaa_weather.json"
-    end_date = date.today() - timedelta(days=1)
+    # Use yesterday in farm's local timezone
+    end_date = await get_farm_today() - timedelta(days=1)
 
     # Load existing cache
     existing_dates = set()

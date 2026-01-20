@@ -11,6 +11,7 @@ from datetime import date, timedelta
 
 from agriwebb.core import (
     get_cache_dir,
+    get_farm_today,
     get_fields,
     settings,
 )
@@ -85,8 +86,8 @@ async def estimate_current_growth(
             print("No animal data found - skipping grazing consumption")
             include_grazing = False
 
-    # Use yesterday as end date for historical data - today's data is incomplete
-    today = date.today()
+    # Use yesterday in farm's local timezone - ensures full day of data
+    today = await get_farm_today()
     end_date = today - timedelta(days=1)
     start_date = end_date - timedelta(days=days_back - 1)
 
@@ -363,7 +364,7 @@ async def sync_sdm(args: argparse.Namespace) -> None:
     paddocks = await get_fields(min_area_ha=0.2)
     print(f"Found {len(paddocks)} paddocks\n")
 
-    today = date.today()
+    today = await get_farm_today()
     processing_lag = 7  # Satellite data is typically delayed
     window_days = getattr(args, "window", 14) or 14
 
@@ -483,7 +484,8 @@ async def update_noaa_cache_smart(refresh: bool = False) -> None:
     import json
 
     cache_path = get_cache_dir() / "noaa_weather.json"
-    end_date = date.today() - timedelta(days=1)
+    # Use yesterday in farm's local timezone
+    end_date = await get_farm_today() - timedelta(days=1)
 
     # Load existing cache
     existing_dates = set()
@@ -535,7 +537,7 @@ async def update_ndvi_cache_smart(refresh: bool = False) -> None:
     from agriwebb.satellite.ndvi_historical import fetch_paddock_history
 
     cache_path = get_cache_dir() / "ndvi_historical.json"
-    today = date.today()
+    today = await get_farm_today()
 
     # Load existing cache
     existing_data = None

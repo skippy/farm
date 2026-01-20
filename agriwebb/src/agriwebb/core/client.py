@@ -1,5 +1,8 @@
 """AgriWebb API client - core functions only."""
 
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
+
 import httpx
 from tenacity import (
     retry,
@@ -69,7 +72,7 @@ query GetFarms {
 """
 
 MAP_FEATURE_QUERY = """
-query GetMapFeature($featureId: ID!) {
+query GetMapFeature($featureId: String!) {
   mapFeatures(filter: { id: { _eq: $featureId } }) {
     id
     name
@@ -82,7 +85,7 @@ query GetMapFeature($featureId: ID!) {
 """
 
 FIELDS_QUERY = """
-query GetFields($farmId: ID!) {
+query GetFields($farmId: String!) {
   fields(filter: { farmId: { _eq: $farmId } }) {
     id
     name
@@ -179,11 +182,17 @@ async def graphql_with_retry(query: str, variables: dict | None = None) -> dict:
     except httpx.ConnectError as e:
         raise RetryableError(f"Connection failed: {e}") from e
     except httpx.HTTPStatusError as e:
+        # Try to get the response body for better error messages
+        try:
+            body = e.response.text
+        except Exception:
+            body = "(unable to read response body)"
+
         if e.response.status_code >= 500:
             # Server error - retry with backoff
-            raise RetryableError(f"HTTP {e.response.status_code}") from e
-        # Client error (4xx) - don't retry
-        raise AgriWebbAPIError(f"HTTP {e.response.status_code}: {e}") from e
+            raise RetryableError(f"HTTP {e.response.status_code}: {body}") from e
+        # Client error (4xx) - don't retry, include full response
+        raise AgriWebbAPIError(f"HTTP {e.response.status_code}: {body}") from e
     except GraphQLError as e:
         # Check if this is a server error we should retry
         if any("Internal Server Error" in err.get("message", "") for err in e.errors):
@@ -209,6 +218,35 @@ async def get_farm_location() -> tuple[float, float]:
     farm = await get_farm()
     location = farm["address"]["location"]
     return location["lat"], location["long"]
+
+
+_cached_farm_tz: ZoneInfo | None = None
+
+
+async def get_farm_timezone() -> ZoneInfo:
+    """Get farm timezone from settings or AgriWebb.
+
+    Returns ZoneInfo object, cached for the session.
+    Checks TZ environment variable first, falls back to AgriWebb farm data.
+    """
+    global _cached_farm_tz
+    if _cached_farm_tz is not None:
+        return _cached_farm_tz
+
+    if settings.tz:
+        tz_name = settings.tz
+    else:
+        farm = await get_farm()
+        tz_name = farm.get("timeZone", "UTC")
+
+    _cached_farm_tz = ZoneInfo(tz_name)
+    return _cached_farm_tz
+
+
+async def get_farm_today() -> date:
+    """Get today's date in the farm's timezone."""
+    tz = await get_farm_timezone()
+    return datetime.now(tz).date()
 
 
 async def get_map_feature(feature_id: str) -> dict:
