@@ -180,7 +180,7 @@ def create_summary_chart():
         f"Net balance: +{net_mid:.0f} t CO2/yr (mid)"
     )
 
-    props = dict(boxstyle="round,pad=0.5", facecolor="wheat", alpha=0.8)
+    props = {"boxstyle": "round,pad=0.5", "facecolor": "wheat", "alpha": 0.8}
     fig.text(0.98, 0.02, farm_info, fontsize=9, verticalalignment="bottom",
              horizontalalignment="right", bbox=props, family="monospace")
 

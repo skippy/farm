@@ -125,7 +125,7 @@ def calculate_seasonality_index(history: list[dict]) -> tuple[float | None, str]
     seasonality = max(0.0, min(1.0, seasonality))
 
     # Determine data quality based on years of data
-    years = len(set(r.get("year") for r in history if r.get("ndvi_mean") is not None))
+    years = len({r.get("year") for r in history if r.get("ndvi_mean") is not None})
     if years >= 3:
         quality = "good"
     elif years >= 1:

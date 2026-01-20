@@ -57,5 +57,6 @@ target-version = "py314"
 line-length = 120
 
 [tool.ruff.lint]
-ignore = ["SIM108"]  # Prefer if/else blocks over ternary operators for readability
+select = ["E", "W", "F", "I", "UP", "B", "SIM", "C4"]
+ignore = ["E501", "SIM108"]  # E501: let formatter handle line length; SIM108: prefer if/else over ternary
 

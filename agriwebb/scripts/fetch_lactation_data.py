@@ -195,7 +195,7 @@ def calculate_annual_lactation_adjustment(monthly_counts: dict, total_ewes: int)
     annual_adjustments = {}
 
     # Group by year
-    years = set(k[:4] for k in monthly_counts)
+    years = {k[:4] for k in monthly_counts}
 
     for year in sorted(years):
         year_months = {k: v for k, v in monthly_counts.items() if k.startswith(year)}
