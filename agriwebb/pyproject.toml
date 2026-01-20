@@ -57,4 +57,5 @@ target-version = "py314"
 line-length = 120
 
 [tool.ruff.lint]
-ignore = ["SIM108"]  # Allow if/else blocks instead of ternary operators
+ignore = ["SIM108"]  # Prefer if/else blocks over ternary operators for readability
+
