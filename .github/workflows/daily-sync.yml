@@ -41,7 +41,7 @@ jobs:
       - name: Restore data cache
         uses: actions/cache/restore@v4
         with:
-          path: .cache
+          path: ${{ github.workspace }}/.cache
           key: agriwebb-data-${{ github.run_id }}
           restore-keys: |
             agriwebb-data-
@@ -53,7 +53,6 @@ jobs:
           AGRIWEBB_FARM_ID: ${{ secrets.AGRIWEBB_FARM_ID }}
           AGRIWEBB_WEATHER_SENSOR_ID: ${{ secrets.AGRIWEBB_WEATHER_SENSOR_ID }}
         run: |
-          mkdir -p .cache
           if [ "${{ inputs.dry_run }}" = "true" ]; then
             uv run agriwebb-weather sync --days 7 --dry-run
           else
@@ -77,7 +76,7 @@ jobs:
         uses: actions/cache/save@v4
         if: always()
         with:
-          path: .cache
+          path: ${{ github.workspace }}/.cache
           key: agriwebb-data-${{ github.run_id }}
 
       - name: Upload cache as artifact
@@ -85,7 +84,7 @@ jobs:
         if: always()
         with:
           name: agriwebb-cache
-          path: .cache
+          path: ${{ github.workspace }}/.cache
           retention-days: 7
           include-hidden-files: true
 
