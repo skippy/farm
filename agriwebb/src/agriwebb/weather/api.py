@@ -155,22 +155,21 @@ async def get_rainfalls(
     if not sensor:
         raise ValueError("No sensor ID configured.")
 
-    # Simple query without date filters for now
-    # TODO: Add date filter support when needed
     if start_date or end_date:
-        # Fall back to f-string for date filtering
-        date_filter = ""
+        # Build time filter - must combine _gte and _lte in a single time object
+        time_conditions = []
         if start_date:
-            date_filter += f", time: {{ _gte: {_to_timestamp_ms(start_date)} }}"
+            time_conditions.append(f"_gte: {_to_timestamp_ms(start_date)}")
         if end_date:
-            date_filter += f", time: {{ _lte: {_to_timestamp_ms(end_date)} }}"
+            time_conditions.append(f"_lte: {_to_timestamp_ms(end_date)}")
+        time_filter = f", time: {{ {', '.join(time_conditions)} }}" if time_conditions else ""
 
         query = f"""
         {{
           rainfalls(filter: {{
             farmId: {{ _eq: "{settings.agriwebb_farm_id}" }}
             sensorId: {{ _eq: "{sensor}" }}
-            {date_filter}
+            {time_filter}
           }}) {{
             id
             time
