@@ -16,7 +16,6 @@ from agriwebb.core import get_cache_dir, get_farm_today, settings
 from agriwebb.weather import api as weather_api
 from agriwebb.weather import ncei, openmeteo
 
-
 # =============================================================================
 # Type Definitions
 # =============================================================================

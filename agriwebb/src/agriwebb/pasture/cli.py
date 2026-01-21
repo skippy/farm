@@ -34,7 +34,6 @@ from agriwebb.pasture.growth import (
 )
 from agriwebb.weather import fetch_ncei_date_range, openmeteo, save_weather_json
 
-
 # =============================================================================
 # Type Definitions
 # =============================================================================
