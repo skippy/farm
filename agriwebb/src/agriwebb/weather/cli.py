@@ -45,7 +45,8 @@ async def cmd_sync(args: argparse.Namespace) -> None:
     Uses NOAA station data where available (preferred, but 5-6 day delay),
     falls back to Open-Meteo for recent days (near-real-time).
 
-    Only updates records that have changed to avoid unnecessary API calls.
+    Only updates records that have changed to avoid unnecessary API calls,
+    unless --force is specified.
     """
     # Calculate total days from flags
     total_days = 0
@@ -78,21 +79,26 @@ async def cmd_sync(args: argparse.Namespace) -> None:
 
     print(f"Retrieved {len(all_weather)} days: {noaa_count} from NOAA, {openmeteo_count} from Open-Meteo")
 
-    # Fetch existing records from AgriWebb to avoid redundant updates
-    print("\nFetching existing AgriWebb records...")
-    existing_rainfalls = await weather_api.get_rainfalls(
-        start_date=str(start_date), end_date=str(end_date)
-    )
+    force_push = getattr(args, "force", False)
 
-    # Build lookup of existing records by date
-    # Convert timestamp (ms, noon UTC) to date string for comparison
+    # Fetch existing records from AgriWebb to check for changes (unless --force)
     existing_by_date: dict[str, float] = {}
-    for record in existing_rainfalls:
-        record_date = datetime.fromtimestamp(record["time"] / 1000, tz=UTC).date()
-        # Value is in mm
-        existing_by_date[str(record_date)] = record["value"]
+    if not force_push:
+        print("\nFetching existing AgriWebb records...")
+        existing_rainfalls = await weather_api.get_rainfalls(
+            start_date=str(start_date), end_date=str(end_date)
+        )
 
-    print(f"Found {len(existing_by_date)} existing records in date range")
+        # Build lookup of existing records by date
+        # Convert timestamp (ms, noon UTC) to date string for comparison
+        for record in existing_rainfalls:
+            record_date = datetime.fromtimestamp(record["time"] / 1000, tz=UTC).date()
+            # Value is in mm
+            existing_by_date[str(record_date)] = record["value"]
+
+        print(f"Found {len(existing_by_date)} existing records in date range")
+    else:
+        print("\n--force specified, pushing all records")
 
     # Determine which records need updating
     records_to_push = []
@@ -102,7 +108,7 @@ async def cmd_sync(args: argparse.Namespace) -> None:
         new_value_mm = round(w["precipitation_inches"] * 25.4, 2)
         existing_value = existing_by_date.get(date_str)
 
-        if existing_value is not None and abs(existing_value - new_value_mm) < 0.01:
+        if not force_push and existing_value is not None and abs(existing_value - new_value_mm) < 0.01:
             # Value unchanged (within rounding tolerance)
             skipped_count += 1
         else:
@@ -116,7 +122,9 @@ async def cmd_sync(args: argparse.Namespace) -> None:
         new_value_mm = round(w["precipitation_inches"] * 25.4, 2)
         existing_value = existing_by_date.get(date_str)
 
-        if existing_value is not None and abs(existing_value - new_value_mm) < 0.01:
+        if force_push:
+            status = "force"
+        elif existing_value is not None and abs(existing_value - new_value_mm) < 0.01:
             status = "unchanged"
         elif existing_value is not None:
             # Convert mm back to inches for display
@@ -127,7 +135,10 @@ async def cmd_sync(args: argparse.Namespace) -> None:
 
         print(f'{w["date"]:<12} {w.get("source", "unknown"):<12} {w["precipitation_inches"]:>7.2f}" {status}')
 
-    print(f"\nRecords to push: {len(records_to_push)} ({skipped_count} unchanged, skipping)")
+    if force_push:
+        print(f"\nRecords to push: {len(records_to_push)} (--force, pushing all)")
+    else:
+        print(f"\nRecords to push: {len(records_to_push)} ({skipped_count} unchanged, skipping)")
 
     if not push_to_agriwebb:
         print("Skipping AgriWebb push (dry run).")
@@ -280,6 +291,7 @@ Examples:
     sync_parser.add_argument("--months", type=int, help="Number of months to sync")
     sync_parser.add_argument("--years", type=int, help="Number of years to sync")
     sync_parser.add_argument("--dry-run", action="store_true", help="Preview without pushing to AgriWebb")
+    sync_parser.add_argument("--force", action="store_true", help="Push all records, even if unchanged")
 
     # cache - Download weather data
     cache_parser = subparsers.add_parser("cache", help="Download weather data to local cache")
