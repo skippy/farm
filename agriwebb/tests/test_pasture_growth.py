@@ -548,9 +548,9 @@ class TestFilterChangedGrowthRecords:
         from agriwebb.pasture.cli import filter_changed_growth_records
 
         records = [
-            {"field_id": "f1", "field_name": "Paddock A", "growth_rate": 20.0, "record_date": "2026-01-15"},  # New
-            {"field_id": "f2", "field_name": "Paddock B", "growth_rate": 25.0, "record_date": "2026-01-15"},  # Unchanged
-            {"field_id": "f3", "field_name": "Paddock C", "growth_rate": 35.0, "record_date": "2026-01-15"},  # Changed
+            {"field_id": "f1", "field_name": "Paddock A", "growth_rate": 20.0, "record_date": "2026-01-15"},
+            {"field_id": "f2", "field_name": "Paddock B", "growth_rate": 25.0, "record_date": "2026-01-15"},
+            {"field_id": "f3", "field_name": "Paddock C", "growth_rate": 35.0, "record_date": "2026-01-15"},
         ]
         existing_by_key = {
             ("f2", "2026-01-15"): 25.0,  # Unchanged
