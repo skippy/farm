@@ -5,6 +5,24 @@ from datetime import UTC, date, datetime
 from agriwebb.core.config import settings
 
 # =============================================================================
+# GraphQL Queries
+# =============================================================================
+
+PASTURE_GROWTH_RATES_QUERY = """
+query GetPastureGrowthRates($farmId: String!) {
+  pastureGrowthRates(filter: {
+    farmId: { _eq: $farmId }
+  }) {
+    id
+    time
+    value
+    fieldId
+  }
+}
+"""
+
+
+# =============================================================================
 # GraphQL Mutations
 # =============================================================================
 
@@ -160,3 +178,48 @@ async def add_standing_dry_matter_batch(
 
     variables = {"input": inputs}
     return await graphql_with_retry(ADD_STANDING_DRY_MATTER_MUTATION, variables)
+
+
+async def get_pasture_growth_rates(
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> list[dict]:
+    """Get pasture growth rate records from AgriWebb.
+
+    Args:
+        start_date: Optional start date filter (ISO format)
+        end_date: Optional end date filter (ISO format)
+
+    Returns:
+        List of growth rate records with id, time, value, fieldId
+    """
+    from agriwebb.core.client import graphql_with_retry
+
+    if start_date or end_date:
+        # Build time filter - must combine _gte and _lte in a single time object
+        time_conditions = []
+        if start_date:
+            time_conditions.append(f"_gte: {_to_timestamp_ms(start_date)}")
+        if end_date:
+            time_conditions.append(f"_lte: {_to_timestamp_ms(end_date)}")
+        time_filter = f", time: {{ {', '.join(time_conditions)} }}" if time_conditions else ""
+
+        query = f"""
+        {{
+          pastureGrowthRates(filter: {{
+            farmId: {{ _eq: "{settings.agriwebb_farm_id}" }}
+            {time_filter}
+          }}) {{
+            id
+            time
+            value
+            fieldId
+          }}
+        }}
+        """
+        result = await graphql_with_retry(query)
+    else:
+        variables = {"farmId": settings.agriwebb_farm_id}
+        result = await graphql_with_retry(PASTURE_GROWTH_RATES_QUERY, variables)
+
+    return result.get("data", {}).get("pastureGrowthRates", [])

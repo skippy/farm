@@ -316,3 +316,266 @@ class TestRainfallIntegration:
         # Should still be able to push zero rainfall
         response = await weather_api.add_rainfall(weather_data["date"], weather_data["precipitation_inches"])
         assert "data" in response
+
+
+class TestFilterChangedRecords:
+    """Tests for the filter_changed_records function."""
+
+    def test_skips_unchanged_records(self):
+        """Records with same value in AgriWebb should be skipped."""
+        from agriwebb.weather.cli import filter_changed_records
+
+        weather_data = [
+            {"date": "2026-01-15", "precipitation_inches": 0.25, "source": "noaa"},
+        ]
+        # 0.25 inches = 6.35 mm
+        existing_by_date = {"2026-01-15": 6.35}
+
+        result = filter_changed_records(weather_data, existing_by_date)
+
+        assert len(result["records_to_push"]) == 0
+        assert result["skipped_count"] == 1
+
+    def test_includes_new_records(self):
+        """Records not in AgriWebb should be included."""
+        from agriwebb.weather.cli import filter_changed_records
+
+        weather_data = [
+            {"date": "2026-01-15", "precipitation_inches": 0.25, "source": "noaa"},
+        ]
+        existing_by_date = {}  # No existing records
+
+        result = filter_changed_records(weather_data, existing_by_date)
+
+        assert len(result["records_to_push"]) == 1
+        assert result["skipped_count"] == 0
+        assert result["records_to_push"][0]["date"] == "2026-01-15"
+
+    def test_includes_changed_records(self):
+        """Records with different values should be included."""
+        from agriwebb.weather.cli import filter_changed_records
+
+        weather_data = [
+            {"date": "2026-01-15", "precipitation_inches": 0.50, "source": "noaa"},
+        ]
+        # Existing has 0.25 inches (6.35 mm), new is 0.50 inches (12.7 mm)
+        existing_by_date = {"2026-01-15": 6.35}
+
+        result = filter_changed_records(weather_data, existing_by_date)
+
+        assert len(result["records_to_push"]) == 1
+        assert result["skipped_count"] == 0
+
+    def test_force_includes_all_records(self):
+        """With force=True, all records should be included."""
+        from agriwebb.weather.cli import filter_changed_records
+
+        weather_data = [
+            {"date": "2026-01-15", "precipitation_inches": 0.25, "source": "noaa"},
+            {"date": "2026-01-16", "precipitation_inches": 0.10, "source": "noaa"},
+        ]
+        # Both dates have same values in AgriWebb
+        existing_by_date = {
+            "2026-01-15": 6.35,  # 0.25 inches
+            "2026-01-16": 2.54,  # 0.10 inches
+        }
+
+        result = filter_changed_records(weather_data, existing_by_date, force=True)
+
+        assert len(result["records_to_push"]) == 2
+        assert result["skipped_count"] == 0
+
+    def test_tolerance_within_threshold(self):
+        """Values within 0.01mm tolerance should be considered equal."""
+        from agriwebb.weather.cli import filter_changed_records
+
+        weather_data = [
+            {"date": "2026-01-15", "precipitation_inches": 0.25, "source": "noaa"},
+        ]
+        # 0.25 inches = 6.35 mm, existing is 6.351 mm (within 0.01 tolerance)
+        existing_by_date = {"2026-01-15": 6.351}
+
+        result = filter_changed_records(weather_data, existing_by_date)
+
+        assert len(result["records_to_push"]) == 0
+        assert result["skipped_count"] == 1
+
+    def test_tolerance_outside_threshold(self):
+        """Values outside 0.01mm tolerance should be considered different."""
+        from agriwebb.weather.cli import filter_changed_records
+
+        weather_data = [
+            {"date": "2026-01-15", "precipitation_inches": 0.25, "source": "noaa"},
+        ]
+        # 0.25 inches = 6.35 mm, existing is 6.37 mm (0.02 difference, outside tolerance)
+        existing_by_date = {"2026-01-15": 6.37}
+
+        result = filter_changed_records(weather_data, existing_by_date)
+
+        assert len(result["records_to_push"]) == 1
+        assert result["skipped_count"] == 0
+
+    def test_mixed_records(self):
+        """Mix of new, unchanged, and changed records."""
+        from agriwebb.weather.cli import filter_changed_records
+
+        weather_data = [
+            {"date": "2026-01-13", "precipitation_inches": 0.10, "source": "noaa"},  # New
+            {"date": "2026-01-14", "precipitation_inches": 0.25, "source": "noaa"},  # Unchanged
+            {"date": "2026-01-15", "precipitation_inches": 0.50, "source": "noaa"},  # Changed
+        ]
+        existing_by_date = {
+            "2026-01-14": 6.35,  # 0.25 inches - unchanged
+            "2026-01-15": 2.54,  # 0.10 inches - will be updated to 0.50
+        }
+
+        result = filter_changed_records(weather_data, existing_by_date)
+
+        assert len(result["records_to_push"]) == 2  # New + Changed
+        assert result["skipped_count"] == 1  # Unchanged
+        dates_to_push = [r["date"] for r in result["records_to_push"]]
+        assert "2026-01-13" in dates_to_push  # New
+        assert "2026-01-15" in dates_to_push  # Changed
+        assert "2026-01-14" not in dates_to_push  # Unchanged
+
+
+class TestValuesMatch:
+    """Tests for the _values_match helper function."""
+
+    def test_exact_match(self):
+        """Exact same values should match."""
+        from agriwebb.weather.cli import _values_match
+
+        assert _values_match(6.35, 6.35) is True
+
+    def test_within_default_tolerance(self):
+        """Values within 0.01mm should match."""
+        from agriwebb.weather.cli import _values_match
+
+        assert _values_match(6.35, 6.355) is True
+        assert _values_match(6.35, 6.345) is True
+
+    def test_outside_default_tolerance(self):
+        """Values outside 0.01mm should not match."""
+        from agriwebb.weather.cli import _values_match
+
+        assert _values_match(6.35, 6.37) is False
+        assert _values_match(6.35, 6.33) is False
+
+    def test_custom_tolerance(self):
+        """Custom tolerance should be respected."""
+        from agriwebb.weather.cli import _values_match
+
+        # With larger tolerance, these should match
+        assert _values_match(6.35, 6.40, tolerance=0.1) is True
+        # With smaller tolerance, they should not
+        assert _values_match(6.35, 6.36, tolerance=0.005) is False
+
+
+class TestGetRecordStatus:
+    """Tests for the _get_record_status helper function."""
+
+    def test_new_record(self):
+        """Record not in existing should show 'new'."""
+        from agriwebb.weather.cli import _get_record_status
+
+        record = {"date": "2026-01-15", "precipitation_inches": 0.25}
+        status = _get_record_status(record, {})
+
+        assert status == "new"
+
+    def test_unchanged_record(self):
+        """Record with same value should show 'unchanged'."""
+        from agriwebb.weather.cli import _get_record_status
+
+        record = {"date": "2026-01-15", "precipitation_inches": 0.25}
+        existing = {"2026-01-15": 6.35}  # 0.25 inches = 6.35 mm
+        status = _get_record_status(record, existing)
+
+        assert status == "unchanged"
+
+    def test_updated_record(self):
+        """Record with different value should show update with values."""
+        from agriwebb.weather.cli import _get_record_status
+
+        record = {"date": "2026-01-15", "precipitation_inches": 0.50}
+        existing = {"2026-01-15": 6.35}  # 0.25 inches
+        status = _get_record_status(record, existing)
+
+        assert "update" in status
+        assert "0.25" in status  # Old value in inches
+        assert "0.50" in status  # New value in inches
+
+    def test_force_status(self):
+        """With force=True, all records should show 'force'."""
+        from agriwebb.weather.cli import _get_record_status
+
+        record = {"date": "2026-01-15", "precipitation_inches": 0.25}
+        existing = {"2026-01-15": 6.35}  # Same value
+        status = _get_record_status(record, existing, force=True)
+
+        assert status == "force"
+
+
+class TestBuildExistingRainfallLookup:
+    """Tests for the _build_existing_rainfall_lookup helper function."""
+
+    def test_builds_date_to_value_dict(self):
+        """Should convert API records to date->value dict."""
+        from agriwebb.weather.cli import _build_existing_rainfall_lookup
+
+        # Timestamps are in milliseconds, noon UTC
+        rainfalls = [
+            {"time": 1705320000000, "value": 6.35},  # 2024-01-15 12:00 UTC
+            {"time": 1705406400000, "value": 12.7},  # 2024-01-16 12:00 UTC
+        ]
+
+        lookup = _build_existing_rainfall_lookup(rainfalls)
+
+        assert lookup["2024-01-15"] == 6.35
+        assert lookup["2024-01-16"] == 12.7
+
+    def test_empty_list_returns_empty_dict(self):
+        """Empty input should return empty dict."""
+        from agriwebb.weather.cli import _build_existing_rainfall_lookup
+
+        lookup = _build_existing_rainfall_lookup([])
+
+        assert lookup == {}
+
+
+class TestCalculateTotalDays:
+    """Tests for the _calculate_total_days helper function."""
+
+    def test_days_only(self):
+        """Days argument should be returned directly."""
+        from agriwebb.weather.cli import _calculate_total_days
+
+        assert _calculate_total_days(14, None, None) == 14
+
+    def test_months_converted(self):
+        """Months should be converted to days (30 days per month)."""
+        from agriwebb.weather.cli import _calculate_total_days
+
+        assert _calculate_total_days(None, 1, None) == 30
+        assert _calculate_total_days(None, 2, None) == 60
+
+    def test_years_converted(self):
+        """Years should be converted to days (365 days per year)."""
+        from agriwebb.weather.cli import _calculate_total_days
+
+        assert _calculate_total_days(None, None, 1) == 365
+        assert _calculate_total_days(None, None, 2) == 730
+
+    def test_combined(self):
+        """Multiple arguments should be summed."""
+        from agriwebb.weather.cli import _calculate_total_days
+
+        # 7 days + 1 month (30) + 1 year (365) = 402
+        assert _calculate_total_days(7, 1, 1) == 402
+
+    def test_all_none(self):
+        """All None should return 0."""
+        from agriwebb.weather.cli import _calculate_total_days
+
+        assert _calculate_total_days(None, None, None) == 0

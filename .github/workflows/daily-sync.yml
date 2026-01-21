@@ -54,9 +54,9 @@ jobs:
           AGRIWEBB_WEATHER_SENSOR_ID: ${{ secrets.AGRIWEBB_WEATHER_SENSOR_ID }}
         run: |
           if [ "${{ inputs.dry_run }}" = "true" ]; then
-            uv run agriwebb-weather sync --days 7 --dry-run
+            uv run agriwebb-weather sync --months 1 --dry-run
           else
-            uv run agriwebb-weather sync --days 7
+            uv run agriwebb-weather sync --months 1
           fi
 
       - name: Calculate and sync growth estimates

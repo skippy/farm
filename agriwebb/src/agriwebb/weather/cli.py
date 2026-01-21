@@ -10,10 +10,166 @@ AgriWebb integration and user-facing commands.
 import argparse
 import asyncio
 from datetime import UTC, date, datetime, timedelta
+from typing import TypedDict
 
 from agriwebb.core import get_cache_dir, get_farm_today, settings
 from agriwebb.weather import api as weather_api
 from agriwebb.weather import ncei, openmeteo
+
+# =============================================================================
+# Type Definitions
+# =============================================================================
+
+
+class WeatherRecord(TypedDict, total=False):
+    """Weather record from NOAA or Open-Meteo."""
+
+    date: str
+    precipitation_inches: float
+    source: str
+    temp_max_f: float | None
+    temp_min_f: float | None
+
+
+class SyncResult(TypedDict):
+    """Result of filtering records for sync."""
+
+    records_to_push: list[WeatherRecord]
+    skipped_count: int
+
+
+# =============================================================================
+# Sync Helper Functions
+# =============================================================================
+
+
+def _calculate_total_days(
+    days: int | None, months: int | None, years: int | None
+) -> int:
+    """Calculate total days from CLI arguments."""
+    total = 0
+    if days:
+        total += days
+    if months:
+        total += months * 30
+    if years:
+        total += years * 365
+    return total
+
+
+def _build_existing_rainfall_lookup(
+    rainfalls: list[dict],
+) -> dict[str, float]:
+    """Build a date->value lookup from existing rainfall records.
+
+    Args:
+        rainfalls: List of rainfall records from AgriWebb API
+
+    Returns:
+        Dict mapping date string to rainfall value in mm
+    """
+    existing_by_date: dict[str, float] = {}
+    for record in rainfalls:
+        record_date = datetime.fromtimestamp(record["time"] / 1000, tz=UTC).date()
+        existing_by_date[str(record_date)] = record["value"]
+    return existing_by_date
+
+
+def _values_match(new_value_mm: float, existing_value_mm: float, tolerance: float = 0.01) -> bool:
+    """Check if two rainfall values match within tolerance.
+
+    Args:
+        new_value_mm: New value in millimeters
+        existing_value_mm: Existing value in millimeters
+        tolerance: Maximum difference to consider equal (default 0.01mm)
+
+    Returns:
+        True if values match within tolerance
+    """
+    return abs(existing_value_mm - new_value_mm) < tolerance
+
+
+def filter_changed_records(
+    weather_data: list[WeatherRecord],
+    existing_by_date: dict[str, float],
+    force: bool = False,
+) -> SyncResult:
+    """Filter weather records to only those that need updating.
+
+    Args:
+        weather_data: List of weather records to potentially sync
+        existing_by_date: Dict of existing date->value(mm) from AgriWebb
+        force: If True, include all records regardless of existing values
+
+    Returns:
+        SyncResult with records_to_push and skipped_count
+    """
+    records_to_push: list[WeatherRecord] = []
+    skipped_count = 0
+
+    for record in weather_data:
+        date_str = record["date"]
+        new_value_mm = round(record["precipitation_inches"] * 25.4, 2)
+        existing_value = existing_by_date.get(date_str)
+
+        if not force and existing_value is not None and _values_match(new_value_mm, existing_value):
+            skipped_count += 1
+        else:
+            records_to_push.append(record)
+
+    return {"records_to_push": records_to_push, "skipped_count": skipped_count}
+
+
+def _get_record_status(
+    record: WeatherRecord,
+    existing_by_date: dict[str, float],
+    force: bool = False,
+) -> str:
+    """Get display status for a weather record.
+
+    Args:
+        record: Weather record
+        existing_by_date: Dict of existing date->value(mm) from AgriWebb
+        force: If True, all records show "force" status
+
+    Returns:
+        Status string for display (e.g., "new", "unchanged", "update (0.10\"→0.25\")")
+    """
+    if force:
+        return "force"
+
+    date_str = record["date"]
+    new_value_mm = round(record["precipitation_inches"] * 25.4, 2)
+    existing_value = existing_by_date.get(date_str)
+
+    if existing_value is None:
+        return "new"
+    elif _values_match(new_value_mm, existing_value):
+        return "unchanged"
+    else:
+        existing_inches = existing_value / 25.4
+        return f"update ({existing_inches:.2f}\"→{record['precipitation_inches']:.2f}\")"
+
+
+def _print_sync_table(
+    weather_data: list[WeatherRecord],
+    existing_by_date: dict[str, float],
+    force: bool = False,
+) -> None:
+    """Print the sync status table."""
+    print(f"\n{'Date':<12} {'Source':<12} {'Precip':>8} {'Status':<12}")
+    print("-" * 48)
+    for record in weather_data:
+        status = _get_record_status(record, existing_by_date, force)
+        print(
+            f'{record["date"]:<12} {record.get("source", "unknown"):<12} '
+            f'{record["precipitation_inches"]:>7.2f}" {status}'
+        )
+
+
+# =============================================================================
+# CLI Commands
+# =============================================================================
 
 
 async def cmd_current(args: argparse.Namespace) -> None:
@@ -44,22 +200,20 @@ async def cmd_sync(args: argparse.Namespace) -> None:
 
     Uses NOAA station data where available (preferred, but 5-6 day delay),
     falls back to Open-Meteo for recent days (near-real-time).
-    """
-    # Calculate total days from flags
-    total_days = 0
-    if args.days:
-        total_days += args.days
-    if args.months:
-        total_days += args.months * 30
-    if args.years:
-        total_days += args.years * 365
 
+    Only updates records that have changed to avoid unnecessary API calls,
+    unless --force is specified.
+    """
+    # Parse arguments
+    total_days = _calculate_total_days(args.days, args.months, args.years)
     if total_days == 0:
         print("Error: Must specify --days, --months, or --years")
         return
 
-    push_to_agriwebb = not args.dry_run
-    # Use yesterday in farm's local timezone - ensures full day of data
+    dry_run = args.dry_run
+    force = getattr(args, "force", False)
+
+    # Calculate date range (ending yesterday to ensure full day of data)
     today_local = await get_farm_today()
     end_date = today_local - timedelta(days=1)
     start_date = end_date - timedelta(days=total_days - 1)
@@ -67,31 +221,54 @@ async def cmd_sync(args: argparse.Namespace) -> None:
     print(f"Syncing rainfall from {start_date} to {end_date}...")
     print(f"Sources: NOAA station {settings.ncei_station_id} + Open-Meteo")
 
-    # Fetch combined data from both sources
+    # Fetch weather data from both sources
     all_weather = await ncei.fetch_combined_precipitation(start_date, end_date)
-
-    # Count by source
     noaa_count = sum(1 for w in all_weather if w.get("source") == "noaa")
     openmeteo_count = sum(1 for w in all_weather if w.get("source") == "open-meteo")
-
     print(f"Retrieved {len(all_weather)} days: {noaa_count} from NOAA, {openmeteo_count} from Open-Meteo")
 
-    # Show data
-    print(f"\n{'Date':<12} {'Source':<12} {'Precip':>8}")
-    print("-" * 34)
-    for w in all_weather:
-        print(f'{w["date"]:<12} {w.get("source", "unknown"):<12} {w["precipitation_inches"]:>7.2f}"')
+    # Fetch existing records (unless --force)
+    existing_by_date: dict[str, float] = {}
+    if not force:
+        print("\nFetching existing AgriWebb records...")
+        existing_rainfalls = await weather_api.get_rainfalls(
+            start_date=str(start_date), end_date=str(end_date)
+        )
+        existing_by_date = _build_existing_rainfall_lookup(existing_rainfalls)
+        print(f"Found {len(existing_by_date)} existing records in date range")
+    else:
+        print("\n--force specified, pushing all records")
 
-    if not push_to_agriwebb:
-        print("\nSkipping AgriWebb push (dry run).")
+    # Filter to only changed records
+    result = filter_changed_records(all_weather, existing_by_date, force)
+    records_to_push = result["records_to_push"]
+    skipped_count = result["skipped_count"]
+
+    # Display sync table
+    _print_sync_table(all_weather, existing_by_date, force)
+
+    # Print summary
+    if force:
+        print(f"\nRecords to push: {len(records_to_push)} (--force, pushing all)")
+    else:
+        print(f"\nRecords to push: {len(records_to_push)} ({skipped_count} unchanged, skipping)")
+
+    # Handle dry run
+    if dry_run:
+        print("Skipping AgriWebb push (dry run).")
+        return
+
+    # Handle nothing to push
+    if not records_to_push:
+        print("No records need updating.")
         return
 
     # Push to AgriWebb
     print("\nPushing to AgriWebb...")
-    for weather in all_weather:
-        await weather_api.add_rainfall(weather["date"], weather["precipitation_inches"])
+    for record in records_to_push:
+        await weather_api.add_rainfall(record["date"], record["precipitation_inches"])
 
-    print(f"Completed: {len(all_weather)} records synced")
+    print(f"Completed: {len(records_to_push)} records synced")
 
 
 async def cmd_list(args: argparse.Namespace) -> None:
@@ -229,6 +406,7 @@ Examples:
     sync_parser.add_argument("--months", type=int, help="Number of months to sync")
     sync_parser.add_argument("--years", type=int, help="Number of years to sync")
     sync_parser.add_argument("--dry-run", action="store_true", help="Preview without pushing to AgriWebb")
+    sync_parser.add_argument("--force", action="store_true", help="Push all records, even if unchanged")
 
     # cache - Download weather data
     cache_parser = subparsers.add_parser("cache", help="Download weather data to local cache")

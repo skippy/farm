@@ -433,3 +433,209 @@ class TestSeasonalGrowthPatterns:
 
         # Growth should be very limited
         assert summer["growth_kg_ha_day"] < 10
+
+
+# =============================================================================
+# Tests for Growth Rate Sync Filtering (CLI helper functions)
+# =============================================================================
+
+
+class TestFilterChangedGrowthRecords:
+    """Tests for the filter_changed_growth_records function."""
+
+    def test_skips_unchanged_records(self):
+        """Records with same value in AgriWebb should be skipped."""
+        from agriwebb.pasture.cli import filter_changed_growth_records
+
+        records = [
+            {"field_id": "f1", "field_name": "Paddock A", "growth_rate": 25.0, "record_date": "2026-01-15"},
+        ]
+        # Same value exists
+        existing_by_key = {("f1", "2026-01-15"): 25.0}
+
+        result = filter_changed_growth_records(records, existing_by_key)
+
+        assert len(result["records_to_push"]) == 0
+        assert result["skipped_count"] == 1
+        assert records[0]["status"] == "unchanged"
+
+    def test_includes_new_records(self):
+        """Records not in AgriWebb should be included."""
+        from agriwebb.pasture.cli import filter_changed_growth_records
+
+        records = [
+            {"field_id": "f1", "field_name": "Paddock A", "growth_rate": 25.0, "record_date": "2026-01-15"},
+        ]
+        existing_by_key = {}  # No existing records
+
+        result = filter_changed_growth_records(records, existing_by_key)
+
+        assert len(result["records_to_push"]) == 1
+        assert result["skipped_count"] == 0
+        assert records[0]["status"] == "new"
+
+    def test_includes_changed_records(self):
+        """Records with different values should be included."""
+        from agriwebb.pasture.cli import filter_changed_growth_records
+
+        records = [
+            {"field_id": "f1", "field_name": "Paddock A", "growth_rate": 30.0, "record_date": "2026-01-15"},
+        ]
+        # Existing has different value
+        existing_by_key = {("f1", "2026-01-15"): 25.0}
+
+        result = filter_changed_growth_records(records, existing_by_key)
+
+        assert len(result["records_to_push"]) == 1
+        assert result["skipped_count"] == 0
+        assert "update" in records[0]["status"]
+        assert "25.0" in records[0]["status"]
+        assert "30.0" in records[0]["status"]
+
+    def test_force_includes_all_records(self):
+        """With force=True, all records should be included."""
+        from agriwebb.pasture.cli import filter_changed_growth_records
+
+        records = [
+            {"field_id": "f1", "field_name": "Paddock A", "growth_rate": 25.0, "record_date": "2026-01-15"},
+            {"field_id": "f2", "field_name": "Paddock B", "growth_rate": 30.0, "record_date": "2026-01-15"},
+        ]
+        # Both have same values in AgriWebb
+        existing_by_key = {
+            ("f1", "2026-01-15"): 25.0,
+            ("f2", "2026-01-15"): 30.0,
+        }
+
+        result = filter_changed_growth_records(records, existing_by_key, force=True)
+
+        assert len(result["records_to_push"]) == 2
+        assert result["skipped_count"] == 0
+        assert records[0]["status"] == "force"
+        assert records[1]["status"] == "force"
+
+    def test_tolerance_within_threshold(self):
+        """Values within 0.1 kg tolerance should be considered equal."""
+        from agriwebb.pasture.cli import filter_changed_growth_records
+
+        records = [
+            {"field_id": "f1", "field_name": "Paddock A", "growth_rate": 25.0, "record_date": "2026-01-15"},
+        ]
+        # Existing is 25.05 (within 0.1 tolerance of 25.0)
+        existing_by_key = {("f1", "2026-01-15"): 25.05}
+
+        result = filter_changed_growth_records(records, existing_by_key)
+
+        assert len(result["records_to_push"]) == 0
+        assert result["skipped_count"] == 1
+
+    def test_tolerance_outside_threshold(self):
+        """Values outside 0.1 kg tolerance should be considered different."""
+        from agriwebb.pasture.cli import filter_changed_growth_records
+
+        records = [
+            {"field_id": "f1", "field_name": "Paddock A", "growth_rate": 25.0, "record_date": "2026-01-15"},
+        ]
+        # Existing is 25.2 (outside 0.1 tolerance of 25.0)
+        existing_by_key = {("f1", "2026-01-15"): 25.2}
+
+        result = filter_changed_growth_records(records, existing_by_key)
+
+        assert len(result["records_to_push"]) == 1
+        assert result["skipped_count"] == 0
+
+    def test_mixed_records(self):
+        """Mix of new, unchanged, and changed records."""
+        from agriwebb.pasture.cli import filter_changed_growth_records
+
+        records = [
+            {"field_id": "f1", "field_name": "Paddock A", "growth_rate": 20.0, "record_date": "2026-01-15"},
+            {"field_id": "f2", "field_name": "Paddock B", "growth_rate": 25.0, "record_date": "2026-01-15"},
+            {"field_id": "f3", "field_name": "Paddock C", "growth_rate": 35.0, "record_date": "2026-01-15"},
+        ]
+        existing_by_key = {
+            ("f2", "2026-01-15"): 25.0,  # Unchanged
+            ("f3", "2026-01-15"): 30.0,  # Will be updated to 35.0
+        }
+
+        result = filter_changed_growth_records(records, existing_by_key)
+
+        assert len(result["records_to_push"]) == 2  # New + Changed
+        assert result["skipped_count"] == 1  # Unchanged
+        pushed_names = [r["field_name"] for r in result["records_to_push"]]
+        assert "Paddock A" in pushed_names  # New
+        assert "Paddock C" in pushed_names  # Changed
+        assert "Paddock B" not in pushed_names  # Unchanged
+
+
+class TestGrowthValuesMatch:
+    """Tests for the _growth_values_match helper function."""
+
+    def test_exact_match(self):
+        """Exact same values should match."""
+        from agriwebb.pasture.cli import _growth_values_match
+
+        assert _growth_values_match(25.0, 25.0) is True
+
+    def test_within_default_tolerance(self):
+        """Values within 0.1 kg should match."""
+        from agriwebb.pasture.cli import _growth_values_match
+
+        assert _growth_values_match(25.0, 25.05) is True
+        assert _growth_values_match(25.0, 24.95) is True
+
+    def test_outside_default_tolerance(self):
+        """Values outside 0.1 kg should not match."""
+        from agriwebb.pasture.cli import _growth_values_match
+
+        assert _growth_values_match(25.0, 25.2) is False
+        assert _growth_values_match(25.0, 24.8) is False
+
+    def test_custom_tolerance(self):
+        """Custom tolerance should be respected."""
+        from agriwebb.pasture.cli import _growth_values_match
+
+        # With larger tolerance, these should match
+        assert _growth_values_match(25.0, 25.5, tolerance=1.0) is True
+        # With smaller tolerance, they should not
+        assert _growth_values_match(25.0, 25.06, tolerance=0.05) is False
+
+
+class TestBuildExistingGrowthLookup:
+    """Tests for the _build_existing_growth_lookup helper function."""
+
+    def test_builds_composite_key_dict(self):
+        """Should convert API records to (field_id, date)->value dict."""
+        from agriwebb.pasture.cli import _build_existing_growth_lookup
+
+        # Timestamps are in milliseconds, noon UTC
+        growth_records = [
+            {"time": 1705320000000, "value": 25.0, "fieldId": "f1"},  # 2024-01-15 12:00 UTC
+            {"time": 1705406400000, "value": 30.0, "fieldId": "f2"},  # 2024-01-16 12:00 UTC
+        ]
+
+        lookup = _build_existing_growth_lookup(growth_records)
+
+        assert lookup[("f1", "2024-01-15")] == 25.0
+        assert lookup[("f2", "2024-01-16")] == 30.0
+
+    def test_empty_list_returns_empty_dict(self):
+        """Empty input should return empty dict."""
+        from agriwebb.pasture.cli import _build_existing_growth_lookup
+
+        lookup = _build_existing_growth_lookup([])
+
+        assert lookup == {}
+
+    def test_same_field_different_dates(self):
+        """Same field on different dates should have separate entries."""
+        from agriwebb.pasture.cli import _build_existing_growth_lookup
+
+        growth_records = [
+            {"time": 1705320000000, "value": 25.0, "fieldId": "f1"},  # 2024-01-15
+            {"time": 1705406400000, "value": 28.0, "fieldId": "f1"},  # 2024-01-16
+        ]
+
+        lookup = _build_existing_growth_lookup(growth_records)
+
+        assert lookup[("f1", "2024-01-15")] == 25.0
+        assert lookup[("f1", "2024-01-16")] == 28.0

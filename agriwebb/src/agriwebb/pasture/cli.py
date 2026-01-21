@@ -7,7 +7,7 @@ into a single interface.
 import argparse
 import asyncio
 import json
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import TypedDict
 
 from agriwebb.core import (
@@ -25,6 +25,7 @@ from agriwebb.data.historical import (
 from agriwebb.pasture.api import (
     add_pasture_growth_rates_batch,
     add_standing_dry_matter_batch,
+    get_pasture_growth_rates,
 )
 from agriwebb.pasture.biomass import ndvi_to_standing_dry_matter
 from agriwebb.pasture.growth import (
@@ -32,6 +33,154 @@ from agriwebb.pasture.growth import (
     load_paddock_soils,
 )
 from agriwebb.weather import fetch_ncei_date_range, openmeteo, save_weather_json
+
+# =============================================================================
+# Type Definitions
+# =============================================================================
+
+
+class GrowthRateRecord(TypedDict, total=False):
+    """Growth rate record for sync."""
+
+    field_id: str
+    field_name: str
+    growth_rate: float
+    record_date: str
+    status: str
+    existing_value: float
+
+
+class GrowthSyncResult(TypedDict):
+    """Result of filtering growth records for sync."""
+
+    records_to_push: list[GrowthRateRecord]
+    skipped_count: int
+
+
+# =============================================================================
+# Growth Rate Sync Helper Functions
+# =============================================================================
+
+
+def _build_existing_growth_lookup(
+    growth_records: list[dict],
+) -> dict[tuple[str, str], float]:
+    """Build a (field_id, date)->value lookup from existing growth rate records.
+
+    Args:
+        growth_records: List of growth rate records from AgriWebb API
+
+    Returns:
+        Dict mapping (field_id, date_str) tuple to growth rate value
+    """
+    existing_by_key: dict[tuple[str, str], float] = {}
+    for rec in growth_records:
+        rec_date = datetime.fromtimestamp(rec["time"] / 1000, tz=UTC).date()
+        key = (rec["fieldId"], str(rec_date))
+        existing_by_key[key] = rec["value"]
+    return existing_by_key
+
+
+def _growth_values_match(
+    new_value: float, existing_value: float, tolerance: float = 0.1
+) -> bool:
+    """Check if two growth rate values match within tolerance.
+
+    Args:
+        new_value: New growth rate value
+        existing_value: Existing growth rate value
+        tolerance: Maximum difference to consider equal (default 0.1 kg DM/ha/day)
+
+    Returns:
+        True if values match within tolerance
+    """
+    return abs(existing_value - new_value) < tolerance
+
+
+def filter_changed_growth_records(
+    records: list[GrowthRateRecord],
+    existing_by_key: dict[tuple[str, str], float],
+    force: bool = False,
+) -> GrowthSyncResult:
+    """Filter growth records to only those that need updating.
+
+    Args:
+        records: List of growth rate records to potentially sync
+        existing_by_key: Dict of existing (field_id, date)->value from AgriWebb
+        force: If True, include all records regardless of existing values
+
+    Returns:
+        GrowthSyncResult with records_to_push and skipped_count
+    """
+    records_to_push: list[GrowthRateRecord] = []
+    skipped_count = 0
+
+    for record in records:
+        key = (record["field_id"], record["record_date"])
+        new_value = round(record["growth_rate"], 1)
+        existing_value = existing_by_key.get(key)
+
+        if not force and existing_value is not None and _growth_values_match(new_value, existing_value):
+            skipped_count += 1
+            record["status"] = "unchanged"
+        else:
+            records_to_push.append(record)
+            if force:
+                record["status"] = "force"
+            elif existing_value is not None:
+                record["status"] = f"update ({existing_value:.1f}→{new_value:.1f})"
+                record["existing_value"] = existing_value
+            else:
+                record["status"] = "new"
+
+    return {"records_to_push": records_to_push, "skipped_count": skipped_count}
+
+
+def _get_growth_record_status(
+    record: GrowthRateRecord,
+    existing_by_key: dict[tuple[str, str], float],
+    force: bool = False,
+) -> str:
+    """Get display status for a growth rate record.
+
+    Args:
+        record: Growth rate record
+        existing_by_key: Dict of existing (field_id, date)->value from AgriWebb
+        force: If True, all records show "force" status
+
+    Returns:
+        Status string for display
+    """
+    if force:
+        return "force"
+
+    key = (record["field_id"], record["record_date"])
+    new_value = round(record["growth_rate"], 1)
+    existing_value = existing_by_key.get(key)
+
+    if existing_value is None:
+        return "new"
+    elif _growth_values_match(new_value, existing_value):
+        return "unchanged"
+    else:
+        return f"update ({existing_value:.1f}→{new_value:.1f})"
+
+
+def _print_growth_sync_table(
+    records: list[GrowthRateRecord],
+    force: bool = False,
+) -> None:
+    """Print the growth rate sync status table."""
+    print(f"\n{'Paddock':<25} {'Growth Rate':>12} {'Status':<20}")
+    print("-" * 60)
+    for record in records:
+        status = record.get("status", "unknown")
+        print(f"{record['field_name']:<25} {record['growth_rate']:>10.1f} kg {status}")
+
+
+# =============================================================================
+# Field Loading
+# =============================================================================
 
 
 def load_fields_for_sync() -> dict[str, str]:
@@ -167,11 +316,15 @@ async def estimate_current_growth(
     }
 
 
-async def sync_growth_to_agriwebb(estimates: dict, dry_run: bool = False) -> dict:
-    """Push growth estimates to AgriWebb."""
-    field_ids = load_fields_for_sync()
+async def sync_growth_to_agriwebb(estimates: dict, dry_run: bool = False, force: bool = False) -> dict:
+    """Push growth estimates to AgriWebb.
 
-    records = []
+    Only pushes records that have changed to avoid unnecessary API calls,
+    unless force is specified.
+    """
+    # Build records from estimates
+    field_ids = load_fields_for_sync()
+    records: list[GrowthRateRecord] = []
     for name, data in estimates["estimates"].items():
         if name not in field_ids:
             print(f"  Skipping {name}: no AgriWebb field ID")
@@ -189,25 +342,61 @@ async def sync_growth_to_agriwebb(estimates: dict, dry_run: bool = False) -> dic
     if not records:
         return {"error": "No records to sync"}
 
-    print(f"\nPrepared {len(records)} records for AgriWebb")
+    # Fetch existing records (unless --force)
+    existing_by_key: dict[tuple[str, str], float] = {}
+    if not force:
+        print("\nFetching existing AgriWebb growth rate records...")
+        record_dates = [r["record_date"] for r in records]
+        min_date = min(record_dates)
+        max_date = max(record_dates)
 
+        existing_records = await get_pasture_growth_rates(
+            start_date=min_date, end_date=max_date
+        )
+        existing_by_key = _build_existing_growth_lookup(existing_records)
+        print(f"Found {len(existing_by_key)} existing records in date range")
+    else:
+        print("\n--force specified, pushing all records")
+
+    # Filter to only changed records
+    result = filter_changed_growth_records(records, existing_by_key, force)
+    records_to_push = result["records_to_push"]
+    skipped_count = result["skipped_count"]
+
+    # Display sync table
+    _print_growth_sync_table(records, force)
+
+    # Print summary
+    if force:
+        print(f"\nRecords to push: {len(records_to_push)} (--force, pushing all)")
+    else:
+        print(f"\nRecords to push: {len(records_to_push)} ({skipped_count} unchanged, skipping)")
+
+    # Handle dry run
     if dry_run:
         print("DRY RUN - not pushing to AgriWebb")
-        return {"dry_run": True, "records": len(records)}
+        return {"dry_run": True, "records": len(records_to_push), "skipped": skipped_count}
 
-    print("Pushing to AgriWebb...")
-    result = await add_pasture_growth_rates_batch(
+    # Handle nothing to push
+    if not records_to_push:
+        print("No records need updating.")
+        return {"pushed": 0, "skipped": skipped_count}
+
+    # Push to AgriWebb
+    print("\nPushing to AgriWebb...")
+    api_result = await add_pasture_growth_rates_batch(
         [
             {
                 "field_id": r["field_id"],
                 "growth_rate": r["growth_rate"],
                 "record_date": r["record_date"],
             }
-            for r in records
+            for r in records_to_push
         ]
     )
 
-    return result
+    print(f"Completed: {len(records_to_push)} records synced")
+    return api_result
 
 
 async def cmd_estimate(args: argparse.Namespace) -> None:
@@ -333,7 +522,7 @@ async def sync_growth_rates(args: argparse.Namespace) -> None:
 
     print(f"\nPrepared estimates for {len(estimates['estimates'])} paddocks")
 
-    result = await sync_growth_to_agriwebb(estimates, dry_run=args.dry_run)
+    result = await sync_growth_to_agriwebb(estimates, dry_run=args.dry_run, force=getattr(args, "force", False))
 
     if "error" in result:
         print(f"Error: {result['error']}")
@@ -724,6 +913,7 @@ Examples:
     sync_parser.add_argument("--window", type=int, default=14, help="Satellite composite window for SDM (default: 14)")
     sync_parser.add_argument("--forecast", action="store_true", help="Include forecast in growth rate sync")
     sync_parser.add_argument("--dry-run", action="store_true", help="Preview without pushing to AgriWebb")
+    sync_parser.add_argument("--force", action="store_true", help="Push all records, even if unchanged")
 
     # cache - Download weather, soil, and NDVI data
     cache_parser = subparsers.add_parser("cache", help="Download weather, soil, and satellite data")
