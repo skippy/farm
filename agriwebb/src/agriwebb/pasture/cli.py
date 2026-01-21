@@ -25,6 +25,7 @@ from agriwebb.data.historical import (
 from agriwebb.pasture.api import (
     add_pasture_growth_rates_batch,
     add_standing_dry_matter_batch,
+    get_pasture_growth_rates,
 )
 from agriwebb.pasture.biomass import ndvi_to_standing_dry_matter
 from agriwebb.pasture.growth import (
@@ -168,7 +169,12 @@ async def estimate_current_growth(
 
 
 async def sync_growth_to_agriwebb(estimates: dict, dry_run: bool = False) -> dict:
-    """Push growth estimates to AgriWebb."""
+    """Push growth estimates to AgriWebb.
+
+    Only pushes records that have changed to avoid unnecessary API calls.
+    """
+    from datetime import UTC, datetime
+
     field_ids = load_fields_for_sync()
 
     records = []
@@ -189,13 +195,63 @@ async def sync_growth_to_agriwebb(estimates: dict, dry_run: bool = False) -> dic
     if not records:
         return {"error": "No records to sync"}
 
-    print(f"\nPrepared {len(records)} records for AgriWebb")
+    # Fetch existing records from AgriWebb to avoid redundant updates
+    print("\nFetching existing AgriWebb growth rate records...")
+    # Get date range from records
+    record_dates = [r["record_date"] for r in records]
+    min_date = min(record_dates)
+    max_date = max(record_dates)
+
+    existing_records = await get_pasture_growth_rates(
+        start_date=min_date, end_date=max_date
+    )
+
+    # Build lookup: (field_id, date_str) -> value
+    existing_by_key: dict[tuple[str, str], float] = {}
+    for rec in existing_records:
+        rec_date = datetime.fromtimestamp(rec["time"] / 1000, tz=UTC).date()
+        key = (rec["fieldId"], str(rec_date))
+        existing_by_key[key] = rec["value"]
+
+    print(f"Found {len(existing_by_key)} existing records in date range")
+
+    # Determine which records need updating
+    records_to_push = []
+    skipped_count = 0
+    for r in records:
+        key = (r["field_id"], r["record_date"])
+        new_value = round(r["growth_rate"], 1)
+        existing_value = existing_by_key.get(key)
+
+        if existing_value is not None and abs(existing_value - new_value) < 0.1:
+            # Value unchanged (within rounding tolerance)
+            skipped_count += 1
+            r["status"] = "unchanged"
+        else:
+            records_to_push.append(r)
+            if existing_value is not None:
+                r["status"] = f"update ({existing_value:.1f}→{new_value:.1f})"
+                r["existing_value"] = existing_value
+            else:
+                r["status"] = "new"
+
+    # Show records with status
+    print(f"\n{'Paddock':<25} {'Growth Rate':>12} {'Status':<20}")
+    print("-" * 60)
+    for r in records:
+        print(f"{r['field_name']:<25} {r['growth_rate']:>10.1f} kg {r['status']}")
+
+    print(f"\nRecords to push: {len(records_to_push)} ({skipped_count} unchanged, skipping)")
 
     if dry_run:
         print("DRY RUN - not pushing to AgriWebb")
-        return {"dry_run": True, "records": len(records)}
+        return {"dry_run": True, "records": len(records_to_push), "skipped": skipped_count}
 
-    print("Pushing to AgriWebb...")
+    if not records_to_push:
+        print("No records need updating.")
+        return {"pushed": 0, "skipped": skipped_count}
+
+    print("\nPushing to AgriWebb...")
     result = await add_pasture_growth_rates_batch(
         [
             {
@@ -203,10 +259,11 @@ async def sync_growth_to_agriwebb(estimates: dict, dry_run: bool = False) -> dic
                 "growth_rate": r["growth_rate"],
                 "record_date": r["record_date"],
             }
-            for r in records
+            for r in records_to_push
         ]
     )
 
+    print(f"Completed: {len(records_to_push)} records synced")
     return result
 
 

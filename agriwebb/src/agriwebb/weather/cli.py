@@ -119,7 +119,9 @@ async def cmd_sync(args: argparse.Namespace) -> None:
         if existing_value is not None and abs(existing_value - new_value_mm) < 0.01:
             status = "unchanged"
         elif existing_value is not None:
-            status = f"update ({existing_value:.1f}→{new_value_mm:.1f}mm)"
+            # Convert mm back to inches for display
+            existing_inches = existing_value / 25.4
+            status = f"update ({existing_inches:.2f}\"→{w['precipitation_inches']:.2f}\")"
         else:
             status = "new"
 
