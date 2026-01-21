@@ -167,27 +167,10 @@ query GetAnimals($farmId: String!, $limit: Int!, $skip: Int!) {
 }
 """
 
-# Records query for animal history
-# TODO: Re-enable AnimalTreatmentRecord and FeedRecord fragments once AgriWebb fixes
-# their API - these fragments cause 500 Internal Server Errors (as of Jan 2026)
-#
-#     ... on AnimalTreatmentRecord {
-#       treatments {
-#         healthProduct
-#         reasonForTreatment
-#         totalApplied { value unit }
-#       }
-#     }
-#     ... on FeedRecord {
-#       feeds {
-#         feedType
-#         amount { value unit }
-#       }
-#     }
-#
+# Records query for animal history - includes all record type fragments
 RECORDS_QUERY_FULL = """
-query GetRecords($farmId: String!, $animalId: String, $limit: Int!, $skip: Int!) {
-  records(options: {farmId: $farmId, animalId: $animalId, limit: $limit, skip: $skip}) {
+query GetRecords($farmId: String!, $animalId: String) {
+  records(options: {farmId: $farmId, animalId: $animalId}) {
     recordId
     recordType
     observationDate
@@ -204,6 +187,19 @@ query GetRecords($farmId: String!, $animalId: String, $limit: Int!, $skip: Int!)
     ... on PregnancyScanRecord {
       fetusCount
       fetalAge
+    }
+    ... on AnimalTreatmentRecord {
+      treatments {
+        healthProduct
+        reasonForTreatment
+        totalApplied { value unit }
+      }
+    }
+    ... on FeedRecord {
+      feeds {
+        feedType
+        amount { value unit }
+      }
     }
   }
 }
@@ -822,8 +818,8 @@ async def _fetch_all_animals_for_cache(
     return all_animals
 
 
-async def _fetch_animal_records(animal_id: str, page_size: int = 100) -> list[dict]:
-    """Fetch all records for a specific animal with pagination.
+async def _fetch_animal_records(animal_id: str) -> list[dict]:
+    """Fetch all records for a specific animal.
 
     Record types in AgriWebb API (from schema introspection):
     - WeighRecord: weight measurements
@@ -835,34 +831,14 @@ async def _fetch_animal_records(animal_id: str, page_size: int = 100) -> list[di
 
     Args:
         animal_id: The animal ID to fetch records for
-        page_size: Number of records per page (default 100)
 
     Returns:
         List of all records for the animal
     """
     farm_id = settings.agriwebb_farm_id
-    all_records = []
-    skip = 0
-
-    while True:
-        variables = {
-            "farmId": farm_id,
-            "animalId": animal_id,
-            "limit": page_size,
-            "skip": skip,
-        }
-        result = await graphql_with_retry(RECORDS_QUERY_FULL, variables)
-        records = result.get("data", {}).get("records", [])
-        all_records.extend(records)
-
-        if len(records) < page_size:
-            # Last page
-            break
-
-        skip += page_size
-        await asyncio.sleep(PAGINATION_DELAY)
-
-    return all_records
+    variables = {"farmId": farm_id, "animalId": animal_id}
+    result = await graphql_with_retry(RECORDS_QUERY_FULL, variables)
+    return result.get("data", {}).get("records", [])
 
 
 async def _fetch_fields_for_cache(
