@@ -44,6 +44,8 @@ async def cmd_sync(args: argparse.Namespace) -> None:
 
     Uses NOAA station data where available (preferred, but 5-6 day delay),
     falls back to Open-Meteo for recent days (near-real-time).
+
+    Only updates records that have changed to avoid unnecessary API calls.
     """
     # Calculate total days from flags
     total_days = 0
@@ -76,22 +78,69 @@ async def cmd_sync(args: argparse.Namespace) -> None:
 
     print(f"Retrieved {len(all_weather)} days: {noaa_count} from NOAA, {openmeteo_count} from Open-Meteo")
 
-    # Show data
-    print(f"\n{'Date':<12} {'Source':<12} {'Precip':>8}")
-    print("-" * 34)
+    # Fetch existing records from AgriWebb to avoid redundant updates
+    print("\nFetching existing AgriWebb records...")
+    existing_rainfalls = await weather_api.get_rainfalls(
+        start_date=str(start_date), end_date=str(end_date)
+    )
+
+    # Build lookup of existing records by date
+    # Convert timestamp (ms, noon UTC) to date string for comparison
+    existing_by_date: dict[str, float] = {}
+    for record in existing_rainfalls:
+        record_date = datetime.fromtimestamp(record["time"] / 1000, tz=UTC).date()
+        # Value is in mm
+        existing_by_date[str(record_date)] = record["value"]
+
+    print(f"Found {len(existing_by_date)} existing records in date range")
+
+    # Determine which records need updating
+    records_to_push = []
+    skipped_count = 0
     for w in all_weather:
-        print(f'{w["date"]:<12} {w.get("source", "unknown"):<12} {w["precipitation_inches"]:>7.2f}"')
+        date_str = w["date"]
+        new_value_mm = round(w["precipitation_inches"] * 25.4, 2)
+        existing_value = existing_by_date.get(date_str)
+
+        if existing_value is not None and abs(existing_value - new_value_mm) < 0.01:
+            # Value unchanged (within rounding tolerance)
+            skipped_count += 1
+        else:
+            records_to_push.append(w)
+
+    # Show data with update status
+    print(f"\n{'Date':<12} {'Source':<12} {'Precip':>8} {'Status':<12}")
+    print("-" * 48)
+    for w in all_weather:
+        date_str = w["date"]
+        new_value_mm = round(w["precipitation_inches"] * 25.4, 2)
+        existing_value = existing_by_date.get(date_str)
+
+        if existing_value is not None and abs(existing_value - new_value_mm) < 0.01:
+            status = "unchanged"
+        elif existing_value is not None:
+            status = f"update ({existing_value:.1f}→{new_value_mm:.1f}mm)"
+        else:
+            status = "new"
+
+        print(f'{w["date"]:<12} {w.get("source", "unknown"):<12} {w["precipitation_inches"]:>7.2f}" {status}')
+
+    print(f"\nRecords to push: {len(records_to_push)} ({skipped_count} unchanged, skipping)")
 
     if not push_to_agriwebb:
-        print("\nSkipping AgriWebb push (dry run).")
+        print("Skipping AgriWebb push (dry run).")
         return
 
-    # Push to AgriWebb
+    if not records_to_push:
+        print("No records need updating.")
+        return
+
+    # Push only changed/new records to AgriWebb
     print("\nPushing to AgriWebb...")
-    for weather in all_weather:
+    for weather in records_to_push:
         await weather_api.add_rainfall(weather["date"], weather["precipitation_inches"])
 
-    print(f"Completed: {len(all_weather)} records synced")
+    print(f"Completed: {len(records_to_push)} records synced")
 
 
 async def cmd_list(args: argparse.Namespace) -> None:

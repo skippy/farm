@@ -53,10 +53,11 @@ jobs:
           AGRIWEBB_FARM_ID: ${{ secrets.AGRIWEBB_FARM_ID }}
           AGRIWEBB_WEATHER_SENSOR_ID: ${{ secrets.AGRIWEBB_WEATHER_SENSOR_ID }}
         run: |
+          # Use 14 days to account for NOAA's 5-6 day data delay
           if [ "${{ inputs.dry_run }}" = "true" ]; then
-            uv run agriwebb-weather sync --days 7 --dry-run
+            uv run agriwebb-weather sync --days 14 --dry-run
           else
-            uv run agriwebb-weather sync --days 7
+            uv run agriwebb-weather sync --days 14
           fi
 
       - name: Calculate and sync growth estimates
