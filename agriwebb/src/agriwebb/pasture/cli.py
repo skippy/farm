@@ -82,19 +82,19 @@ def _build_existing_growth_lookup(
 
 
 def _growth_values_match(
-    new_value: float, existing_value: float, tolerance: float = 0.1
+    new_value: float, existing_value: float, tolerance: float = 1.0
 ) -> bool:
     """Check if two growth rate values match within tolerance.
 
     Args:
         new_value: New growth rate value
         existing_value: Existing growth rate value
-        tolerance: Maximum difference to consider equal (default 0.1 kg DM/ha/day)
+        tolerance: Maximum difference to consider equal (default 1.0 kg DM/ha/day)
 
     Returns:
         True if values match within tolerance
     """
-    return abs(existing_value - new_value) < tolerance
+    return abs(existing_value - new_value) <= tolerance
 
 
 def filter_changed_growth_records(
