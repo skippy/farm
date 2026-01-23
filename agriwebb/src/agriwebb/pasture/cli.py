@@ -82,25 +82,29 @@ def _build_existing_growth_lookup(
 
 
 def _growth_values_match(
-    new_value: float, existing_value: float, tolerance: float = 0.1
+    new_value: float, existing_value: float, tolerance: float | None = None
 ) -> bool:
     """Check if two growth rate values match within tolerance.
 
     Args:
         new_value: New growth rate value
         existing_value: Existing growth rate value
-        tolerance: Maximum difference to consider equal (default 0.1 kg DM/ha/day)
+        tolerance: Maximum difference to consider equal.
+            If None, uses settings.growth_rate_tolerance.
 
     Returns:
         True if values match within tolerance
     """
-    return abs(existing_value - new_value) < tolerance
+    if tolerance is None:
+        tolerance = settings.growth_rate_tolerance
+    return abs(existing_value - new_value) <= tolerance
 
 
 def filter_changed_growth_records(
     records: list[GrowthRateRecord],
     existing_by_key: dict[tuple[str, str], float],
     force: bool = False,
+    tolerance: float | None = None,
 ) -> GrowthSyncResult:
     """Filter growth records to only those that need updating.
 
@@ -108,10 +112,15 @@ def filter_changed_growth_records(
         records: List of growth rate records to potentially sync
         existing_by_key: Dict of existing (field_id, date)->value from AgriWebb
         force: If True, include all records regardless of existing values
+        tolerance: Maximum difference to consider values equal.
+            If None, uses settings.growth_rate_tolerance.
 
     Returns:
         GrowthSyncResult with records_to_push and skipped_count
     """
+    if tolerance is None:
+        tolerance = settings.growth_rate_tolerance
+
     records_to_push: list[GrowthRateRecord] = []
     skipped_count = 0
 
@@ -120,7 +129,7 @@ def filter_changed_growth_records(
         new_value = round(record["growth_rate"], 1)
         existing_value = existing_by_key.get(key)
 
-        if not force and existing_value is not None and _growth_values_match(new_value, existing_value):
+        if not force and existing_value is not None and _growth_values_match(new_value, existing_value, tolerance):
             skipped_count += 1
             record["status"] = "unchanged"
         else:

@@ -453,7 +453,7 @@ class TestFilterChangedGrowthRecords:
         # Same value exists
         existing_by_key = {("f1", "2026-01-15"): 25.0}
 
-        result = filter_changed_growth_records(records, existing_by_key)
+        result = filter_changed_growth_records(records, existing_by_key, tolerance=1.0)
 
         assert len(result["records_to_push"]) == 0
         assert result["skipped_count"] == 1
@@ -468,7 +468,7 @@ class TestFilterChangedGrowthRecords:
         ]
         existing_by_key = {}  # No existing records
 
-        result = filter_changed_growth_records(records, existing_by_key)
+        result = filter_changed_growth_records(records, existing_by_key, tolerance=1.0)
 
         assert len(result["records_to_push"]) == 1
         assert result["skipped_count"] == 0
@@ -484,7 +484,7 @@ class TestFilterChangedGrowthRecords:
         # Existing has different value
         existing_by_key = {("f1", "2026-01-15"): 25.0}
 
-        result = filter_changed_growth_records(records, existing_by_key)
+        result = filter_changed_growth_records(records, existing_by_key, tolerance=1.0)
 
         assert len(result["records_to_push"]) == 1
         assert result["skipped_count"] == 0
@@ -506,7 +506,7 @@ class TestFilterChangedGrowthRecords:
             ("f2", "2026-01-15"): 30.0,
         }
 
-        result = filter_changed_growth_records(records, existing_by_key, force=True)
+        result = filter_changed_growth_records(records, existing_by_key, force=True, tolerance=1.0)
 
         assert len(result["records_to_push"]) == 2
         assert result["skipped_count"] == 0
@@ -514,31 +514,31 @@ class TestFilterChangedGrowthRecords:
         assert records[1]["status"] == "force"
 
     def test_tolerance_within_threshold(self):
-        """Values within 0.1 kg tolerance should be considered equal."""
+        """Values within tolerance should be considered equal."""
         from agriwebb.pasture.cli import filter_changed_growth_records
 
         records = [
             {"field_id": "f1", "field_name": "Paddock A", "growth_rate": 25.0, "record_date": "2026-01-15"},
         ]
-        # Existing is 25.05 (within 0.1 tolerance of 25.0)
-        existing_by_key = {("f1", "2026-01-15"): 25.05}
+        # Existing is 25.8 (within 1.0 tolerance of 25.0)
+        existing_by_key = {("f1", "2026-01-15"): 25.8}
 
-        result = filter_changed_growth_records(records, existing_by_key)
+        result = filter_changed_growth_records(records, existing_by_key, tolerance=1.0)
 
         assert len(result["records_to_push"]) == 0
         assert result["skipped_count"] == 1
 
     def test_tolerance_outside_threshold(self):
-        """Values outside 0.1 kg tolerance should be considered different."""
+        """Values outside tolerance should be considered different."""
         from agriwebb.pasture.cli import filter_changed_growth_records
 
         records = [
             {"field_id": "f1", "field_name": "Paddock A", "growth_rate": 25.0, "record_date": "2026-01-15"},
         ]
-        # Existing is 25.2 (outside 0.1 tolerance of 25.0)
-        existing_by_key = {("f1", "2026-01-15"): 25.2}
+        # Existing is 26.5 (outside 1.0 tolerance of 25.0)
+        existing_by_key = {("f1", "2026-01-15"): 26.5}
 
-        result = filter_changed_growth_records(records, existing_by_key)
+        result = filter_changed_growth_records(records, existing_by_key, tolerance=1.0)
 
         assert len(result["records_to_push"]) == 1
         assert result["skipped_count"] == 0
@@ -557,7 +557,7 @@ class TestFilterChangedGrowthRecords:
             ("f3", "2026-01-15"): 30.0,  # Will be updated to 35.0
         }
 
-        result = filter_changed_growth_records(records, existing_by_key)
+        result = filter_changed_growth_records(records, existing_by_key, tolerance=1.0)
 
         assert len(result["records_to_push"]) == 2  # New + Changed
         assert result["skipped_count"] == 1  # Unchanged
@@ -574,30 +574,31 @@ class TestGrowthValuesMatch:
         """Exact same values should match."""
         from agriwebb.pasture.cli import _growth_values_match
 
-        assert _growth_values_match(25.0, 25.0) is True
+        assert _growth_values_match(25.0, 25.0, tolerance=1.0) is True
 
-    def test_within_default_tolerance(self):
-        """Values within 0.1 kg should match."""
+    def test_within_tolerance(self):
+        """Values within tolerance should match."""
         from agriwebb.pasture.cli import _growth_values_match
 
-        assert _growth_values_match(25.0, 25.05) is True
-        assert _growth_values_match(25.0, 24.95) is True
+        assert _growth_values_match(25.0, 25.5, tolerance=1.0) is True
+        assert _growth_values_match(25.0, 24.5, tolerance=1.0) is True
+        assert _growth_values_match(25.0, 26.0, tolerance=1.0) is True  # Exactly at tolerance
 
-    def test_outside_default_tolerance(self):
-        """Values outside 0.1 kg should not match."""
+    def test_outside_tolerance(self):
+        """Values outside tolerance should not match."""
         from agriwebb.pasture.cli import _growth_values_match
 
-        assert _growth_values_match(25.0, 25.2) is False
-        assert _growth_values_match(25.0, 24.8) is False
+        assert _growth_values_match(25.0, 26.5, tolerance=1.0) is False
+        assert _growth_values_match(25.0, 23.5, tolerance=1.0) is False
 
     def test_custom_tolerance(self):
         """Custom tolerance should be respected."""
         from agriwebb.pasture.cli import _growth_values_match
 
         # With larger tolerance, these should match
-        assert _growth_values_match(25.0, 25.5, tolerance=1.0) is True
+        assert _growth_values_match(25.0, 27.0, tolerance=2.0) is True
         # With smaller tolerance, they should not
-        assert _growth_values_match(25.0, 25.06, tolerance=0.05) is False
+        assert _growth_values_match(25.0, 25.2, tolerance=0.1) is False
 
 
 class TestBuildExistingGrowthLookup:

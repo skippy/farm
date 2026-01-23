@@ -51,5 +51,9 @@ class Settings(BaseSettings):
     # If not set, will be fetched from AgriWebb farm data
     tz: str | None = None
 
+    # Pasture growth rate sync tolerance (kg DM/ha/day)
+    # Skip syncing if new value is within this tolerance of existing value
+    growth_rate_tolerance: float = 1.0
+
 
 settings = Settings()
