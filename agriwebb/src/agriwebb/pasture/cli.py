@@ -647,7 +647,7 @@ async def sync_sdm(args: argparse.Namespace) -> None:
         )
 
         sdm_data = result.get("data", {}).get("addTotalStandingDryMatters", {})
-        sdm_records = sdm_data.get("totalStandingDryMatters", [])
+        sdm_records = sdm_data.get("feedOnOffers", [])
         print(f"Successfully synced {len(sdm_records)} SDM records!")
 
     except Exception as e:

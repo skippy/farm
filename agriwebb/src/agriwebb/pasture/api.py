@@ -53,7 +53,7 @@ mutation AddFeedOnOffer($input: [AddFeedOnOfferInput!]!) {
 ADD_STANDING_DRY_MATTER_MUTATION = """
 mutation AddStandingDryMatter($input: [AddTotalStandingDryMatterInput!]!) {
   addTotalStandingDryMatters(input: $input) {
-    totalStandingDryMatters {
+    feedOnOffers {
       id
       time
       value
