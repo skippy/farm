@@ -15,6 +15,13 @@ from typing import TypedDict
 import httpx
 
 from agriwebb.core import get_cache_dir
+from agriwebb.core.units import (
+    format_precip,
+    format_precip_summary,
+    format_temp,
+    format_temp_range,
+    get_precip_description,
+)
 
 # API endpoints
 HISTORICAL_API = "https://archive-api.open-meteo.com/v1/archive"
@@ -466,15 +473,6 @@ async def get_weather_range(
     return [record for record in cached["daily_data"] if start_str <= record["date"] <= end_str]
 
 
-from agriwebb.core.units import (
-    format_precip,
-    format_precip_summary,
-    format_temp,
-    format_temp_range,
-    get_precip_description,
-)
-
-
 def _get_weekly_summary(days: list[DailyWeather]) -> dict:
     """Summarize a week of weather data."""
     if not days:
@@ -542,11 +540,12 @@ async def show_weather_forecast(days: int = 7) -> None:
     # Show data source notes
     print("\n" + "-" * 70)
     if climatology_days > 0:
-        print(f"Data sources:")
+        print("Data sources:")
         print(f"  Days 1-{api_forecast_days}: Open-Meteo weather forecast")
-        print(f"  Days {api_forecast_days + 1}-{days}: Historical averages ({len(set(d['date'][:4] for d in historical_data))} years of data)")
+        years_of_data = len({d['date'][:4] for d in historical_data})
+        print(f"  Days {api_forecast_days + 1}-{days}: Historical averages ({years_of_data} years of data)")
     else:
-        print(f"Source: Open-Meteo weather forecast")
+        print("Source: Open-Meteo weather forecast")
 
 
 def _print_daily_forecast(forecast: list[DailyWeather], api_days: int) -> None:
@@ -579,8 +578,6 @@ def _print_daily_forecast(forecast: list[DailyWeather], api_days: int) -> None:
 
 def _print_weekly_forecast(forecast: list[DailyWeather], api_days: int, total_days: int) -> None:
     """Print weekly summary forecast for longer horizons."""
-    today = date.today()
-
     # Group into weeks
     weeks = []
     current_week = []
