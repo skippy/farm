@@ -14,9 +14,7 @@ import json
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
-import httpx
-
-from agriwebb.core import get_cache_dir, settings
+from agriwebb.core import get_cache_dir, http_get_with_retry, settings
 from agriwebb.weather import openmeteo
 
 NCEI_API_URL = "https://www.ncei.noaa.gov/access/services/data/v1"
@@ -34,22 +32,20 @@ async def fetch_ncei_precipitation(target_date: date) -> dict | None:
         "units": "standard",
     }
 
-    async with httpx.AsyncClient() as http:
-        response = await http.get(NCEI_API_URL, params=params, timeout=30)
-        response.raise_for_status()
-        data = response.json()
+    response = await http_get_with_retry(NCEI_API_URL, params=params, timeout=30)
+    data = response.json()
 
-        if not data:
-            return None
+    if not data:
+        return None
 
-        record = data[0]
-        return {
-            "date": record.get("DATE"),
-            "station": record.get("STATION"),
-            "precipitation_inches": float(record.get("PRCP", 0) or 0),
-            "temp_max_f": float(record.get("TMAX")) if record.get("TMAX") else None,
-            "temp_min_f": float(record.get("TMIN")) if record.get("TMIN") else None,
-        }
+    record = data[0]
+    return {
+        "date": record.get("DATE"),
+        "station": record.get("STATION"),
+        "precipitation_inches": float(record.get("PRCP", 0) or 0),
+        "temp_max_f": float(record.get("TMAX")) if record.get("TMAX") else None,
+        "temp_min_f": float(record.get("TMIN")) if record.get("TMIN") else None,
+    }
 
 
 async def fetch_ncei_date_range(start_date: date, end_date: date) -> list[dict]:
@@ -64,26 +60,24 @@ async def fetch_ncei_date_range(start_date: date, end_date: date) -> list[dict]:
         "units": "standard",
     }
 
-    async with httpx.AsyncClient() as http:
-        response = await http.get(NCEI_API_URL, params=params, timeout=60)
-        response.raise_for_status()
-        data = response.json()
+    response = await http_get_with_retry(NCEI_API_URL, params=params, timeout=60)
+    data = response.json()
 
-        if not data:
-            return []
+    if not data:
+        return []
 
-        results = []
-        for record in data:
-            results.append(
-                {
-                    "date": record.get("DATE"),
-                    "station": record.get("STATION"),
-                    "precipitation_inches": float(record.get("PRCP", 0) or 0),
-                    "temp_max_f": float(record.get("TMAX")) if record.get("TMAX") else None,
-                    "temp_min_f": float(record.get("TMIN")) if record.get("TMIN") else None,
-                }
-            )
-        return results
+    results = []
+    for record in data:
+        results.append(
+            {
+                "date": record.get("DATE"),
+                "station": record.get("STATION"),
+                "precipitation_inches": float(record.get("PRCP", 0) or 0),
+                "temp_max_f": float(record.get("TMAX")) if record.get("TMAX") else None,
+                "temp_min_f": float(record.get("TMIN")) if record.get("TMIN") else None,
+            }
+        )
+    return results
 
 
 async def fetch_openmeteo_precipitation(

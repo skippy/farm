@@ -51,6 +51,61 @@ class AgriWebbAPIError(Exception):
     pass
 
 
+class ExternalAPIError(Exception):
+    """Non-retryable error from external API."""
+
+    pass
+
+
+# =============================================================================
+# HTTP Helpers
+# =============================================================================
+
+
+@retry(
+    retry=retry_if_exception_type(RetryableError),
+    stop=stop_after_attempt(MAX_RETRIES),
+    wait=wait_exponential_jitter(initial=MIN_WAIT_SECONDS, max=MAX_WAIT_SECONDS, jitter=2),
+    reraise=True,
+)
+async def http_get_with_retry(
+    url: str,
+    params: dict | None = None,
+    timeout: int = 30,
+) -> httpx.Response:
+    """Execute an HTTP GET request with automatic retry on transient errors.
+
+    Retries on:
+    - Timeouts (connect and read)
+    - Connection errors
+    - HTTP 5xx errors (server overload)
+
+    Args:
+        url: URL to fetch
+        params: Optional query parameters
+        timeout: Request timeout in seconds
+
+    Returns:
+        httpx.Response object
+
+    Raises:
+        ExternalAPIError: If all retries fail or non-retryable error occurs
+    """
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, params=params, timeout=timeout)
+            response.raise_for_status()
+            return response
+    except httpx.TimeoutException as e:
+        raise RetryableError(f"Request timed out: {e}") from e
+    except httpx.ConnectError as e:
+        raise RetryableError(f"Connection failed: {e}") from e
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code >= 500:
+            raise RetryableError(f"HTTP {e.response.status_code}") from e
+        raise ExternalAPIError(f"HTTP {e.response.status_code}: {e.response.text}") from e
+
+
 # =============================================================================
 # GraphQL Queries and Mutations
 # =============================================================================
