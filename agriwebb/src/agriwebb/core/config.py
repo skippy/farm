@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -54,6 +55,10 @@ class Settings(BaseSettings):
     # Pasture growth rate sync tolerance (kg DM/ha/day)
     # Skip syncing if new value is within this tolerance of existing value
     growth_rate_tolerance: float = 1.0
+
+    # Display units for CLI output ("imperial" = °F/inches, "metric" = °C/mm)
+    # Note: AgriWebb API always uses metric internally
+    display_units: Literal["imperial", "metric"] = "imperial"
 
 
 settings = Settings()

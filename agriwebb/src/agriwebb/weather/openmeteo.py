@@ -466,23 +466,13 @@ async def get_weather_range(
     return [record for record in cached["daily_data"] if start_str <= record["date"] <= end_str]
 
 
-def _format_temp_f(temp_c: float) -> str:
-    """Convert Celsius to Fahrenheit and format."""
-    return f"{temp_c * 9/5 + 32:.0f}°F"
-
-
-def _get_precip_description(precip_mm: float) -> str:
-    """Get a human-readable precipitation description."""
-    if precip_mm < 0.1:
-        return "Dry"
-    elif precip_mm < 2.5:
-        return "Light rain"
-    elif precip_mm < 7.5:
-        return "Moderate rain"
-    elif precip_mm < 15:
-        return "Heavy rain"
-    else:
-        return "Very heavy"
+from agriwebb.core.units import (
+    format_precip,
+    format_precip_summary,
+    format_temp,
+    format_temp_range,
+    get_precip_description,
+)
 
 
 def _get_weekly_summary(days: list[DailyWeather]) -> dict:
@@ -516,8 +506,8 @@ async def show_weather_forecast(days: int = 7) -> None:
 
     try:
         current = await fetch_current_conditions()
-        temp_f = current['temperature_c'] * 9/5 + 32
-        print(f"\nCurrent: {current['temperature_c']:.1f}°C ({temp_f:.0f}°F)")
+        temp_display = format_temp(current['temperature_c'])
+        print(f"\nCurrent: {temp_display}")
     except Exception:
         print("\nCurrent conditions unavailable")
 
@@ -577,15 +567,9 @@ def _print_daily_forecast(forecast: list[DailyWeather], api_days: int) -> None:
         elif d == today + timedelta(days=1):
             day_name = "Tomorrow"
 
-        # Convert to Fahrenheit
-        high_f = day['temp_max_c'] * 9/5 + 32
-        low_f = day['temp_min_c'] * 9/5 + 32
-        temp_range = f"{low_f:.0f}-{high_f:.0f}°F"
-
-        # Convert to inches
-        precip_in = day['precip_mm'] / 25.4
-        precip = f"{precip_in:.2f}\"" if day['precip_mm'] >= 0.1 else "—"
-        conditions = _get_precip_description(day['precip_mm'])
+        temp_range = format_temp_range(day['temp_min_c'], day['temp_max_c'])
+        precip = format_precip(day['precip_mm'])
+        conditions = get_precip_description(day['precip_mm'])
 
         # Mark climatology days
         marker = "" if i < api_days else " *"
@@ -639,16 +623,9 @@ def _print_weekly_forecast(forecast: list[DailyWeather], api_days: int, total_da
 
         period = f"{week['start'].strftime('%b %d')} - {week['end'].strftime('%b %d')}"
 
-        # Convert to Fahrenheit
-        avg_f = summary['temp_avg_c'] * 9/5 + 32
-        high_f = summary['temp_high_c'] * 9/5 + 32
-        low_f = summary['temp_low_c'] * 9/5 + 32
-        avg_temp = f"{avg_f:.0f}°F"
-        high_low = f"{low_f:.0f}-{high_f:.0f}°F"
-
-        # Convert to inches
-        precip_in = summary['precip_total_mm'] / 25.4
-        precip = f"{precip_in:.1f}\" / {summary['precip_days']}d"
+        avg_temp = format_temp(summary['temp_avg_c'])
+        high_low = format_temp_range(summary['temp_low_c'], summary['temp_high_c'])
+        precip = format_precip_summary(summary['precip_total_mm'], summary['precip_days'])
 
         print(f"{period:<20} {avg_temp:<12} {high_low:<14} {precip:<12} {source}")
 
@@ -671,16 +648,10 @@ def _print_weekly_forecast(forecast: list[DailyWeather], api_days: int, total_da
 
         for month, days in monthly.items():
             summary = _get_weekly_summary(days)
-            # Convert to Fahrenheit
-            avg_f = summary['temp_avg_c'] * 9/5 + 32
-            high_f = summary['temp_high_c'] * 9/5 + 32
-            low_f = summary['temp_low_c'] * 9/5 + 32
-            avg_temp = f"{avg_f:.0f}°F"
-            temp_range = f"{low_f:.0f}-{high_f:.0f}°F"
-            # Convert to inches
-            precip_in = summary['precip_total_mm'] / 25.4
-            precip = f"{precip_in:.1f}\" over {summary['days']}d"
-            print(f"{month:<16} {avg_temp:<12} {temp_range:<14} {precip}")
+            avg_temp = format_temp(summary['temp_avg_c'])
+            temp_range = format_temp_range(summary['temp_low_c'], summary['temp_high_c'])
+            precip = format_precip(summary['precip_total_mm'], decimals=1)
+            print(f"{month:<16} {avg_temp:<12} {temp_range:<14} {precip} over {summary['days']}d")
 
 
 # CLI interface
