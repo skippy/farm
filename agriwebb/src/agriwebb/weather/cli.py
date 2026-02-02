@@ -184,15 +184,7 @@ async def cmd_current(args: argparse.Namespace) -> None:
 async def cmd_forecast(args: argparse.Namespace) -> None:
     """Show weather forecast."""
     days = getattr(args, "days", 7)
-    print(f"\n{days}-day forecast:")
-    forecast = await openmeteo.fetch_forecast(days=days, include_past_days=0)
-    print(f"{'Date':<12} {'Temp':<10} {'Precip':<10} {'ET0':<8}")
-    print("-" * 42)
-    for day in forecast:
-        print(
-            f"{day['date']:<12} {day['temp_min_c']:.0f}-{day['temp_max_c']:.0f}°C    "
-            f"{day['precip_mm']:.1f} mm    {day['et0_mm']:.1f} mm"
-        )
+    await openmeteo.show_weather_forecast(days=days)
 
 
 async def cmd_sync(args: argparse.Namespace) -> None:
@@ -382,6 +374,9 @@ async def cli_main() -> None:
 Examples:
   agriwebb-weather current             Show current conditions
   agriwebb-weather forecast            Show 7-day forecast
+  agriwebb-weather forecast --days 14  Extended 14-day forecast
+  agriwebb-weather forecast --days 30  Monthly outlook (16d forecast + historical)
+  agriwebb-weather forecast --days 90  Seasonal outlook (forecast + historical)
   agriwebb-weather list                List rainfall records in AgriWebb
   agriwebb-weather sync --days 14      Sync recent rainfall to AgriWebb
   agriwebb-weather sync --years 2      Backfill 2 years of rainfall
@@ -395,7 +390,10 @@ Examples:
 
     # forecast - Show forecast
     forecast_parser = subparsers.add_parser("forecast", help="Show weather forecast")
-    forecast_parser.add_argument("--days", type=int, default=7, help="Number of forecast days (default: 7)")
+    forecast_parser.add_argument(
+        "--days", type=int, default=7,
+        help="Forecast horizon: 7 (standard), 14 (extended), 30 (monthly), 90 (seasonal)"
+    )
 
     # list - List AgriWebb rainfall records
     subparsers.add_parser("list", help="List rainfall records in AgriWebb")
