@@ -12,9 +12,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import TypedDict
 
-import httpx
-
-from agriwebb.core import get_cache_dir
+from agriwebb.core import get_cache_dir, http_get_with_retry
 from agriwebb.core.units import (
     format_precip,
     format_precip_summary,
@@ -85,10 +83,8 @@ async def fetch_historical(
         "timezone": "America/Los_Angeles",
     }
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(HISTORICAL_API, params=params, timeout=60)
-        response.raise_for_status()
-        data = response.json()
+    response = await http_get_with_retry(HISTORICAL_API, params=params, timeout=60)
+    data = response.json()
 
     daily = data.get("daily", {})
     dates = daily.get("time", [])
@@ -148,10 +144,8 @@ async def fetch_forecast(
         "past_days": include_past_days,
     }
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(FORECAST_API, params=params, timeout=30)
-        response.raise_for_status()
-        data = response.json()
+    response = await http_get_with_retry(FORECAST_API, params=params, timeout=30)
+    data = response.json()
 
     daily = data.get("daily", {})
     dates = daily.get("time", [])
@@ -199,10 +193,8 @@ async def fetch_current_conditions(
         "timezone": "America/Los_Angeles",
     }
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(FORECAST_API, params=params, timeout=15)
-        response.raise_for_status()
-        data = response.json()
+    response = await http_get_with_retry(FORECAST_API, params=params, timeout=15)
+    data = response.json()
 
     current = data.get("current", {})
     return {

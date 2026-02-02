@@ -3,6 +3,7 @@
 from agriwebb.core import client, units
 from agriwebb.core.client import (
     AgriWebbAPIError,
+    ExternalAPIError,
     GraphQLError,
     RetryableError,
     get_farm,
@@ -13,6 +14,7 @@ from agriwebb.core.client import (
     get_map_feature,
     graphql,
     graphql_with_retry,
+    http_get_with_retry,
     update_map_feature,
 )
 from agriwebb.core.config import get_cache_dir, settings
@@ -36,9 +38,11 @@ __all__ = [
     "get_cache_dir",
     "graphql",
     "graphql_with_retry",
+    "http_get_with_retry",
     "GraphQLError",
     "RetryableError",
     "AgriWebbAPIError",
+    "ExternalAPIError",
     "get_farm",
     "get_farm_today",
     "get_farm_location",

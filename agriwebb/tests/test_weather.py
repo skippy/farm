@@ -6,7 +6,7 @@ from datetime import date
 import httpx
 import pytest
 
-from agriwebb.core.client import AgriWebbAPIError
+from agriwebb.core.client import AgriWebbAPIError, RetryableError
 from agriwebb.weather import api as weather_api
 from agriwebb.weather import ncei as weather
 
@@ -77,10 +77,10 @@ class TestFetchNceiPrecipitation:
         assert "PRCP" in str(request.url)
 
     async def test_fetch_raises_on_http_error(self, mock_ncei):
-        """Verify HTTP errors are raised."""
+        """Verify HTTP 5xx errors are retried and raise RetryableError after exhaustion."""
         mock_ncei.get("/access/services/data/v1").mock(return_value=httpx.Response(500))
 
-        with pytest.raises(httpx.HTTPStatusError):
+        with pytest.raises(RetryableError):
             await weather.fetch_ncei_precipitation(date(2026, 1, 15))
 
 

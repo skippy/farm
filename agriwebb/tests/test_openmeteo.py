@@ -2,11 +2,11 @@
 
 from datetime import date
 
-import httpx
 import pytest
 import respx
 from httpx import Response
 
+from agriwebb.core.client import RetryableError
 from agriwebb.weather.openmeteo import (
     DEFAULT_LAT,
     DEFAULT_LON,
@@ -294,15 +294,15 @@ class TestWeatherDataIntegration:
 
 
 class TestErrorHandling:
-    """Tests for API error handling."""
+    """Tests for API error handling with retry."""
 
     @respx.mock
     @pytest.mark.asyncio
     async def test_historical_api_error(self):
-        """Handles API errors gracefully."""
+        """Retries on 5xx errors and raises RetryableError after exhaustion."""
         respx.get(HISTORICAL_API).mock(return_value=Response(500, text="Server Error"))
 
-        with pytest.raises(httpx.HTTPStatusError):
+        with pytest.raises(RetryableError):
             await fetch_historical(
                 start_date=date(2024, 1, 1),
                 end_date=date(2024, 1, 3),
@@ -311,8 +311,8 @@ class TestErrorHandling:
     @respx.mock
     @pytest.mark.asyncio
     async def test_forecast_api_error(self):
-        """Handles forecast API errors."""
+        """Retries on 5xx errors and raises RetryableError after exhaustion."""
         respx.get(FORECAST_API).mock(return_value=Response(503, text="Service Unavailable"))
 
-        with pytest.raises(httpx.HTTPStatusError):
+        with pytest.raises(RetryableError):
             await fetch_forecast(days=7)
