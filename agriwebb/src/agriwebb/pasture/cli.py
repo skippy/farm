@@ -215,12 +215,22 @@ def load_fields_for_sync() -> dict[str, str]:
 
 async def estimate_current_growth(
     days_back: int = 7,
-    include_forecast: bool = False,
+    forecast_days: int = 0,
     include_grazing: bool = True,
 ) -> dict:
-    """Estimate current pasture growth rates for all paddocks."""
+    """Estimate current pasture growth rates for all paddocks.
+
+    Args:
+        days_back: Number of days to look back for growth averages
+        forecast_days: Number of forecast days (0=none, 7/14/30 supported)
+        include_grazing: Whether to include grazing consumption data
+    """
+    # Request enough forecast days from the weather cache
+    # Open-Meteo supports max 16 days, beyond that we use climatology
+    cache_forecast_days = min(forecast_days, 16) if forecast_days > 0 else 7
+
     print("Updating weather data...")
-    weather_data = await openmeteo.update_weather_cache()
+    weather_data = await openmeteo.update_weather_cache(forecast_days=cache_forecast_days)
 
     paddock_soils = load_paddock_soils()
     print(f"Loaded {len(paddock_soils)} paddocks with soil data")
@@ -287,14 +297,44 @@ async def estimate_current_growth(
                 }
 
     forecast_estimates = {}
-    if include_forecast:
-        print("\nCalculating 7-day growth projection...")
-        forecast_end = today + timedelta(days=7)
+    forecast_meta = {}
+    if forecast_days > 0:
+        # Determine forecast composition
+        api_forecast_days = min(forecast_days, 16)
+        climatology_days = max(0, forecast_days - 16)
+
+        if climatology_days > 0:
+            print(f"\nCalculating {forecast_days}-day growth projection...")
+            print(f"  (days 1-{api_forecast_days}: weather forecast, days {api_forecast_days + 1}-{forecast_days}: historical averages)")
+        else:
+            print(f"\nCalculating {forecast_days}-day growth projection...")
+
+        forecast_end = today + timedelta(days=forecast_days)
+
+        # Build weather data for forecast period
+        forecast_weather = list(weather_data["daily_data"])
+
+        # Add climatology data if needed (for days beyond 16)
+        if climatology_days > 0:
+            climatology_start = today + timedelta(days=api_forecast_days + 1)
+            climatology_end = today + timedelta(days=forecast_days)
+            climatology_data = openmeteo.get_climatology_for_dates(
+                climatology_start,
+                climatology_end,
+                weather_data["daily_data"],
+            )
+            # Add climatology records (don't overwrite existing)
+            existing_dates = {d["date"] for d in forecast_weather}
+            for record in climatology_data:
+                if record["date"] not in existing_dates:
+                    forecast_weather.append(record)
+            forecast_weather.sort(key=lambda x: x["date"])
+
         forecast_results = calculate_farm_growth(
             start_date=today + timedelta(days=1),
             end_date=forecast_end,
             paddock_soils=paddock_soils,
-            weather_data=weather_data["daily_data"],
+            weather_data=forecast_weather,
         )
 
         for name, daily_results in forecast_results.items():
@@ -306,6 +346,12 @@ async def estimate_current_growth(
                     "total_growth_kg_ha": round(total_forecast, 0),
                     "avg_growth_kg_ha_day": round(avg_forecast, 1),
                 }
+
+        forecast_meta = {
+            "total_days": forecast_days,
+            "forecast_days": api_forecast_days,
+            "climatology_days": climatology_days,
+        }
 
     print("Fetching current conditions...")
     try:
@@ -321,7 +367,8 @@ async def estimate_current_growth(
         },
         "paddock_count": len(current_estimates),
         "estimates": current_estimates,
-        "forecast": forecast_estimates if include_forecast else None,
+        "forecast": forecast_estimates if forecast_days > 0 else None,
+        "forecast_meta": forecast_meta if forecast_days > 0 else None,
     }
 
 
@@ -415,9 +462,14 @@ async def cmd_estimate(args: argparse.Namespace) -> None:
     print("=" * 70)
 
     days_back = getattr(args, "days", 14)
+    # Support both --forecast (bool) and --forecast-days N
+    forecast_days = getattr(args, "forecast_days", 0)
+    if forecast_days == 0 and getattr(args, "forecast", False):
+        forecast_days = 7  # Default to 7 for backward compatibility
+
     estimates = await estimate_current_growth(
         days_back=days_back,
-        include_forecast=args.forecast,
+        forecast_days=forecast_days,
     )
 
     if args.json:
@@ -489,8 +541,16 @@ async def cmd_estimate(args: argparse.Namespace) -> None:
     except Exception as e:
         print(f"\n(Historical comparison unavailable: {e})")
 
-    if args.forecast and estimates.get("forecast"):
-        print("\n7-Day Growth Projection:")
+    if estimates.get("forecast"):
+        meta = estimates.get("forecast_meta", {})
+        total_days = meta.get("total_days", 7)
+        forecast_days_actual = meta.get("forecast_days", total_days)
+        climatology_days = meta.get("climatology_days", 0)
+
+        header = f"\n{total_days}-Day Growth Projection"
+        if climatology_days > 0:
+            header += f" (days 1-{forecast_days_actual}: forecast, days {forecast_days_actual + 1}-{total_days}: historical avg)"
+        print(header + ":")
         print(f"{'Paddock':<25} {'Projected Total':<18} {'Avg/Day'}")
         print("-" * 55)
 
@@ -522,11 +582,14 @@ async def sync_growth_rates(args: argparse.Namespace) -> None:
     print("=" * 70)
 
     days_back = getattr(args, "days", 14)
-    include_forecast = getattr(args, "forecast", False)
+    # Support both --forecast and --forecast-days
+    forecast_days = getattr(args, "forecast_days", 0)
+    if forecast_days == 0 and getattr(args, "forecast", False):
+        forecast_days = 7
 
     estimates = await estimate_current_growth(
         days_back=days_back,
-        include_forecast=include_forecast,
+        forecast_days=forecast_days,
     )
 
     print(f"\nPrepared estimates for {len(estimates['estimates'])} paddocks")
@@ -899,6 +962,8 @@ async def cli_main() -> None:
 Examples:
   agriwebb-pasture estimate                   Weather-driven growth estimates
   agriwebb-pasture estimate --forecast        Include 7-day projection
+  agriwebb-pasture estimate --forecast-days 14   Extended 14-day projection
+  agriwebb-pasture estimate --forecast-days 30   30-day projection (16d forecast + 14d historical)
   agriwebb-pasture sync --growth-rate         Push growth rates to AgriWebb
   agriwebb-pasture sync --sdm                 Push standing dry matter from satellite
   agriwebb-pasture sync --growth-rate --sdm   Push both
@@ -911,7 +976,14 @@ Examples:
     # estimate - Weather-driven estimates
     estimate_parser = subparsers.add_parser("estimate", help="Weather-driven pasture growth estimates")
     estimate_parser.add_argument("--days", type=int, default=14, help="Days to look back for averages (default: 14)")
-    estimate_parser.add_argument("--forecast", action="store_true", help="Include 7-day growth projection")
+    estimate_parser.add_argument("--forecast", action="store_true", help="Include 7-day growth projection (shortcut for --forecast-days 7)")
+    estimate_parser.add_argument(
+        "--forecast-days",
+        type=int,
+        default=0,
+        choices=[0, 7, 14, 30],
+        help="Days to forecast (7=standard, 14=extended, 30=extended+historical avg)",
+    )
     estimate_parser.add_argument("--json", action="store_true", help="Output as JSON")
 
     # sync - Push pasture data to AgriWebb
@@ -920,7 +992,14 @@ Examples:
     sync_parser.add_argument("--sdm", action="store_true", help="Sync standing dry matter (satellite NDVI)")
     sync_parser.add_argument("--days", type=int, default=14, help="Days to look back for growth rates (default: 14)")
     sync_parser.add_argument("--window", type=int, default=14, help="Satellite composite window for SDM (default: 14)")
-    sync_parser.add_argument("--forecast", action="store_true", help="Include forecast in growth rate sync")
+    sync_parser.add_argument("--forecast", action="store_true", help="Include 7-day forecast (shortcut for --forecast-days 7)")
+    sync_parser.add_argument(
+        "--forecast-days",
+        type=int,
+        default=0,
+        choices=[0, 7, 14, 30],
+        help="Days to forecast (7=standard, 14=extended, 30=extended+historical avg)",
+    )
     sync_parser.add_argument("--dry-run", action="store_true", help="Preview without pushing to AgriWebb")
     sync_parser.add_argument("--force", action="store_true", help="Push all records, even if unchanged")
 
