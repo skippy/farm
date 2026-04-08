@@ -154,7 +154,11 @@ async def fetch_combined_precipitation(
     """
     # Fetch from both sources
     noaa_data = await fetch_ncei_date_range(start_date, end_date)
-    openmeteo_data = await fetch_openmeteo_precipitation(start_date, end_date)
+    try:
+        openmeteo_data = await fetch_openmeteo_precipitation(start_date, end_date)
+    except Exception as e:
+        print(f"Warning: Open-Meteo unavailable ({e}), using NOAA data only")
+        openmeteo_data = []
 
     # Index NOAA data by date
     noaa_by_date = {r["date"]: r for r in noaa_data}

@@ -355,12 +355,16 @@ async def update_weather_cache(
 
         # Fetch recent + forecast (covers gap between archive and today)
         print(f"Fetching recent days and {min(forecast_days, 16)}-day forecast...")
-        recent_forecast = await fetch_forecast(
-            days=forecast_days,
-            lat=lat,
-            lon=lon,
-            include_past_days=14,  # Overlap to fill any gaps
-        )
+        try:
+            recent_forecast = await fetch_forecast(
+                days=forecast_days,
+                lat=lat,
+                lon=lon,
+                include_past_days=14,  # Overlap to fill any gaps
+            )
+        except Exception as e:
+            print(f"Warning: Forecast API unavailable ({e}), using cached data")
+            recent_forecast = []
 
         # Merge, preferring existing historical data over forecast for past dates
         for record in recent_forecast:
