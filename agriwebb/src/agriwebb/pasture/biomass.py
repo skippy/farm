@@ -36,16 +36,10 @@ Seasonal Notes (from literature):
 """
 
 from dataclasses import dataclass
-from enum import Enum
+from datetime import date
 
-
-class Season(Enum):
-    """Seasons for calibration adjustment."""
-
-    WINTER = "winter"  # Dec, Jan, Feb
-    SPRING = "spring"  # Mar, Apr, May
-    SUMMER = "summer"  # Jun, Jul, Aug
-    FALL = "fall"  # Sep, Oct, Nov
+from agriwebb.pasture.growth import Season
+from agriwebb.pasture.growth import get_season as _get_season_from_date
 
 
 @dataclass
@@ -120,15 +114,11 @@ ANNUAL_MODEL = CalibrationModel(
 
 
 def get_season(month: int) -> Season:
-    """Get season from month number (1-12)."""
-    if month in (12, 1, 2):
-        return Season.WINTER
-    elif month in (3, 4, 5):
-        return Season.SPRING
-    elif month in (6, 7, 8):
-        return Season.SUMMER
-    else:
-        return Season.FALL
+    """Get season from month number (1-12).
+
+    Delegates to the canonical ``growth.get_season(date)`` implementation.
+    """
+    return _get_season_from_date(date(2000, month, 15))
 
 
 def ndvi_to_standing_dry_matter(
