@@ -14,7 +14,6 @@ Register with Claude Code:
 from __future__ import annotations
 
 import json
-from collections import Counter
 from datetime import UTC, datetime
 
 from mcp.server.fastmcp import FastMCP
@@ -112,13 +111,12 @@ def _load_portal_cache(record_type: str) -> list[dict]:
     path = get_cache_dir() / "portal" / f"{record_type}.json"
     if not path.exists():
         return []
-    import json as _json
 
     with open(path) as f:
-        raw = _json.load(f)
+        raw = json.load(f)
     # Handle double-JSON-encoded files (string wrapping)
     if isinstance(raw, str):
-        raw = _json.loads(raw)
+        raw = json.loads(raw)
     return raw.get("records", [])
 
 
@@ -320,90 +318,54 @@ async def get_litter(dam: str, year: int) -> str:
 
 @server.tool()
 async def get_lambing_season(year: int | None = None) -> str:
-    """Season report: total live lambs, sex breakdown, lambing rate, litter size distribution.
+    """Season dashboard: live lambs, sex breakdown, lambing rate, litter distribution.
 
-    'Born' = live lambs (alive or sold). Sold = successfully raised, not a loss.
+    Lambing rate uses live lambs only (per farm convention).
+    'Born' = live lambs (fate=Alive). Sold = successfully raised, not a loss.
     """
-    loader = _load()
+    from agriwebb.analysis.lambing.season import lambing_season_report
+
     if year is None:
         year = datetime.now(UTC).year
     data = _farm_data(season=year)
-
-    # Find all lambs born this year
-    born_this_year = [a for a in data.animals if loader.get_birth_year(a) == year]
-
-    # Live-born = fate is Alive or Sold (not Dead)
-    live_born = [a for a in born_this_year if loader.was_raised(a)]
-    dead_born = [a for a in born_this_year if loader.is_dead(a)]
-
-    # Sex breakdown of all born
-    sex_counts = Counter(loader.get_sex(a) for a in born_this_year)
-
-    # Litter size distribution (group by dam)
-    dam_litters: dict[str, int] = {}
-    for a in born_this_year:
-        dam_id = loader.get_dam_id(a) or "unknown"
-        dam_litters[dam_id] = dam_litters.get(dam_id, 0) + 1
-    litter_dist = Counter(dam_litters.values())
-
-    # Lambing rate = total born / number of dams that lambed
-    num_dams = len(dam_litters)
-    lambing_rate = round(len(born_this_year) / num_dams, 2) if num_dams else 0
-
-    result = {
-        "year": year,
-        "totalBorn": len(born_this_year),
-        "liveBorn": len(live_born),
-        "losses": len(dead_born),
-        "sexBreakdown": dict(sex_counts),
-        "lambingRate": lambing_rate,
-        "damsLambed": num_dams,
-        "litterSizeDistribution": {str(k): v for k, v in sorted(litter_dist.items())},
-    }
+    result = lambing_season_report(data)
     _add_warnings(result)
     return json.dumps(result, indent=2)
 
 
 @server.tool()
-async def get_losses(year: int | None = None) -> str:
-    """Loss report: count by category, by sire, and by dam breed.
+async def get_lambs(year: int | None = None, dam: str | None = None, sire: str | None = None) -> str:
+    """Get all lambs for a season with full outcome data.
 
-    Categories: stillborn, early_loss (0-90 days), late_death (>90 days),
-    or detailed categories from loss records (prenatal, intrapartum, perinatal).
+    Returns each lamb with: name, sex, breed, dam, sire, fate, lossCategory.
+    Filter by year, dam name, or sire name. Defaults to current year.
+    The agent can filter/group these results for loss analysis, sire analysis, etc.
     """
     loader = _load()
     if year is None:
         year = datetime.now(UTC).year
     data = _farm_data(season=year)
 
-    dead_this_year = [
-        a for a in data.animals if loader.get_birth_year(a) == year and loader.is_dead(a)
-    ]
+    lambs = [a for a in data.animals if loader.get_birth_year(a) == year]
 
-    by_category: dict[str, int] = {}
-    by_sire: dict[str, int] = {}
-    by_dam_breed: dict[str, int] = {}
+    # Filter by dam name
+    if dam:
+        dam_animal = _find_animal_in_cache(dam, data.animals, data.by_id)
+        if dam_animal:
+            dam_id = dam_animal["animalId"]
+            lambs = [a for a in lambs if loader.get_dam_id(a) == dam_id]
+        else:
+            return json.dumps({"error": f"No animal found matching dam '{dam}'"})
 
-    for a in dead_this_year:
-        cat = loader.classify_loss(a, data.loss_records) or "unknown"
-        by_category[cat] = by_category.get(cat, 0) + 1
+    # Filter by sire name
+    if sire:
+        sire_needle = sire.strip().upper()
+        lambs = [a for a in lambs if loader.get_sire_name(a).upper() == sire_needle]
 
-        sire_name = loader.get_sire_name(a)
-        by_sire[sire_name] = by_sire.get(sire_name, 0) + 1
-
-        dam_id = loader.get_dam_id(a)
-        dam_breed = loader.get_breed(data.by_id[dam_id]) if dam_id and dam_id in data.by_id else "?"
-        by_dam_breed[dam_breed] = by_dam_breed.get(dam_breed, 0) + 1
-
-    result = {
-        "year": year,
-        "totalLosses": len(dead_this_year),
-        "byCategory": by_category,
-        "bySire": by_sire,
-        "byDamBreed": by_dam_breed,
-    }
-    _add_warnings(result)
-    return json.dumps(result, indent=2)
+    results = [_lamb_summary(a, loader, data.loss_records) for a in lambs]
+    response = {"year": year, "count": len(results), "lambs": results}
+    _add_warnings(response)
+    return json.dumps(response, indent=2)
 
 
 @server.tool()

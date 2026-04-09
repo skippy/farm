@@ -101,17 +101,20 @@ agriwebb-pasture sync --sdm --dry-run              # Weekly SDM
 ## MCP Servers
 
 ### AgriWebb Data Tools (`agriwebb`)
-Provides 10 livestock analysis tools that operate on cached data (no API calls):
-- `get_animal(identifier)` — look up by name/VID/EID/ID
+Provides livestock analysis tools that operate on cached data (no API calls):
+- `get_animal(identifier)` — look up by name/VID/EID/ID (enriched with portal notes/death details)
+- `get_lambs(year?, dam?, sire?)` — all lambs for a season with outcomes, filterable
 - `get_offspring(parent, year?)` — offspring, optionally by birth year
 - `get_ancestors(animal, max_depth?)` — ancestor tree for inbreeding checks
 - `get_litter(dam, year)` — one ewe's lambs in one year with outcomes
 - `get_lambing_season(year?)` — season dashboard (live lambs, rates, litter distribution)
-- `get_losses(year?)` — loss breakdown by category/sire/dam
 - `get_sire_stats(sire?)` — loss rate per sire across all years
 - `get_joining_groups(year?)` — natural service groups from portal data
 - `get_ncc_compatibility(ram, ewe)` — shared ancestors + inbreeding risk
 - `get_breedable_ewes(breed?)` — on-farm breeding-age females
+- `get_notes(animal)` — clinical notes from portal data
+- `get_death_details(animal)` — loss reason/details from portal death records
+- `get_ai_records()` — artificial insemination records with donor sire details
 
 Registered as: `claude mcp add agriwebb -- uv run --project agriwebb python -m agriwebb.mcp_server`
 

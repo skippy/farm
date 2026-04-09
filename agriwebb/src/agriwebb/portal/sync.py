@@ -7,7 +7,7 @@ from pathlib import Path
 from agriwebb.core.config import get_cache_dir
 
 
-async def sync_portal_data(full_refresh: bool = False):
+async def sync_portal_data():
     """Fetch portal-only records and save to cache.
 
     Fetches: death-record, note-record, natural-service-record, ai-record.

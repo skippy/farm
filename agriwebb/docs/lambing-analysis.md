@@ -188,17 +188,22 @@ The public GraphQL API (`api.agriwebb.com/v2`) does NOT expose:
 - Only 6 record types are queryable: feed, weigh, score, animalTreatment,
   locationChanged, pregnancyScan
 
-### Portal scraping
-A Playwright MCP browser integration is configured for portal scraping when the
-API falls short. Session data persists in the Playwright profile directory.
-Natural service data is cached in `.cache/natural_service.json` after scraping.
-
-### Internal API discovery
+### Portal API client (`agriwebb.portal`)
 The portal uses an internal event-sourcing API at `loopback-cdn.agriwebb.io`
-with endpoints like `EventSourcingService/search`, `/query`, `/aggregate`.
-This is NOT accessible with the public API key — it uses a separate session-based
-auth from the portal login flow. Future work may explore using these endpoints
-via the Playwright session's auth context.
+with endpoints `EventSourcingService/search`, `/query`, `/aggregate`.
+This requires a session token from the Playwright browser profile (not the
+public API key). The `PortalClient` class handles this — it launches Playwright
+headless, reads the auth token from localStorage, and makes direct JSON API calls
+via `page.evaluate(fetch(...))`. No DOM scraping.
+
+13 record types are accessible: `natural-service-record`, `death-record`,
+`note-record`, `ai-record`, `sale-record`, `wean-record`, `castrate-record`,
+`tag-record`, `observation-record`, `weigh-record`, `score-record`,
+`wool-harvest-record`, `feed-record`.
+
+Portal data is cached in `.cache/portal/<type>.json` and read by the MCP tools
+for notes, death details, and AI records. The `aggregate` endpoint returns
+`creationDate` and `lastModifiedDate` fields that could enable delta sync.
 
 ---
 

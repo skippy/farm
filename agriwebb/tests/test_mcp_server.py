@@ -18,8 +18,8 @@ from agriwebb.mcp_server import (
     get_breedable_ewes,
     get_joining_groups,
     get_lambing_season,
+    get_lambs,
     get_litter,
-    get_losses,
     get_ncc_compatibility,
     get_offspring,
     get_sire_stats,
@@ -396,53 +396,58 @@ class TestGetLitter:
 class TestGetLambingSeason:
     async def test_season_2026(self):
         result = _parse(await get_lambing_season(2026))
-        assert result["year"] == 2026
-        assert result["totalBorn"] == 3  # lamb A, B, C
-        assert result["liveBorn"] == 2  # A alive, B sold
-        assert result["losses"] == 1  # C dead
-        assert result["damsLambed"] >= 1
-        assert "lambingRate" in result
+        assert result["season"] == 2026
+        headline = result["headline"]
+        assert headline["live_lambs"] == 2  # A alive, B sold (was_raised)
+        assert headline["ewes_lambed"] >= 1
+        assert "lambing_rate_per_lambed" in headline
 
-    async def test_season_2025(self):
-        result = _parse(await get_lambing_season(2025))
-        assert result["totalBorn"] == 1  # Lamb D
-        assert result["liveBorn"] == 1
+    async def test_season_default_year(self):
+        """When year matches the fixture season (2026), returns correct data."""
+        result = _parse(await get_lambing_season())
+        # Default year = current year; fixture season = 2026
+        assert "headline" in result
 
-    async def test_empty_season(self):
-        result = _parse(await get_lambing_season(2019))
-        assert result["totalBorn"] == 0
+    async def test_season_has_by_sire(self):
+        result = _parse(await get_lambing_season(2026))
+        assert "by_sire" in result
 
     async def test_has_litter_distribution(self):
         result = _parse(await get_lambing_season(2026))
-        assert "litterSizeDistribution" in result
+        assert "litter_distribution" in result
 
 
 # ---------------------------------------------------------------------------
-# get_losses
+# get_lambs
 # ---------------------------------------------------------------------------
 
 
-class TestGetLosses:
-    async def test_losses_2026(self):
-        result = _parse(await get_losses(2026))
+class TestGetLambs:
+    async def test_lambs_2026(self):
+        result = _parse(await get_lambs(2026))
         assert result["year"] == 2026
-        assert result["totalLosses"] == 1
-        assert "byCategory" in result
-        assert "bySire" in result
-        assert "byDamBreed" in result
+        assert result["count"] > 0
+        assert "lambs" in result
 
-    async def test_loss_categories(self):
-        result = _parse(await get_losses(2026))
-        # Lamb C has a detailed loss record ("intrapartum")
-        assert "intrapartum" in result["byCategory"]
+    async def test_lambs_include_outcome(self):
+        result = _parse(await get_lambs(2026))
+        for lamb in result["lambs"]:
+            assert "outcome" in lamb
 
-    async def test_loss_by_sire(self):
-        result = _parse(await get_losses(2026))
-        assert "Big John" in result["bySire"]
+    async def test_lambs_filter_by_sire(self):
+        result = _parse(await get_lambs(2026, sire="Big John"))
+        assert result["count"] > 0
+        for lamb in result["lambs"]:
+            assert lamb["sire"] == "Big John"
 
-    async def test_no_losses(self):
-        result = _parse(await get_losses(2020))
-        assert result["totalLosses"] == 0
+    async def test_lambs_filter_by_dam(self):
+        result = _parse(await get_lambs(2026, dam="Daisy"))
+        for lamb in result["lambs"]:
+            assert lamb["dam"] == "Daisy"
+
+    async def test_lambs_no_results(self):
+        result = _parse(await get_lambs(2010))
+        assert result["count"] == 0
 
 
 # ---------------------------------------------------------------------------

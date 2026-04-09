@@ -87,21 +87,22 @@ class PortalClient:
 
     async def _api_call(self, endpoint: str, body: dict) -> dict:
         """Make an API call to the loopback event-sourcing service."""
+        url = f"{LOOPBACK_BASE}/{endpoint}"
+        body_json = json.dumps(body)
         result = await self._page.evaluate(
-            f"""
-            async () => {{
-                const r = await fetch('{LOOPBACK_BASE}/{endpoint}', {{
+            """async ([url, token, bodyJson]) => {
+                const r = await fetch(url, {
                     method: 'POST',
-                    headers: {{
+                    headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': '{self._token}'
-                    }},
-                    body: JSON.stringify({json.dumps(body)})
-                }});
+                        'Authorization': token
+                    },
+                    body: bodyJson
+                });
                 const text = await r.text();
-                return {{ status: r.status, body: text }};
-            }}
-        """
+                return { status: r.status, body: text };
+            }""",
+            [url, self._token, body_json],
         )
         if result["status"] != 200:
             raise RuntimeError(f"Portal API error ({result['status']}): {result['body'][:200]}")
