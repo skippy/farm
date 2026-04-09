@@ -8,6 +8,8 @@ This workspace contains tools for farm management, primarily integrating with Ag
 farm/
 ├── .cache/                        # Local data cache (gitignored)
 │   ├── animals.json               # All animals with records
+│   ├── natural_service.json       # Breeding groups (scraped from portal)
+│   ├── lamb_losses_YYYY.json      # Categorized losses per year
 │   ├── paddock_soils.json         # USDA soil data per paddock
 │   ├── weather_historical.json    # Open-Meteo weather (2018+)
 │   ├── noaa_weather.json          # NOAA station data
@@ -17,6 +19,13 @@ farm/
 ├── .github/workflows/             # GitHub Actions (daily/weekly sync)
 ├── agriwebb/                      # AgriWebb integration package
 │   ├── src/agriwebb/
+│   │   ├── analysis/lambing/      # Lambing analysis (loader, reports)
+│   │   ├── core/                  # Shared utilities (cache, config, timestamps)
+│   │   ├── data/                  # Livestock, soils, grazing data
+│   │   ├── pasture/               # Growth models, biomass, SDM
+│   │   ├── satellite/             # GEE NDVI, NLCD, moss detection
+│   │   ├── sync/                  # Push data to AgriWebb
+│   │   └── weather/               # NOAA, Open-Meteo, rainfall
 │   └── tests/
 └── CLAUDE.md                      # This file
 ```
@@ -88,17 +97,19 @@ agriwebb-pasture sync --sdm --dry-run              # Weekly SDM
 
 ## Local Data Analysis
 
-The `.cache/animals.json` file contains all animals with full details. Always prefer reading this file over making API calls - it's faster and doesn't hit rate limits.
+The `.cache/animals.json` file contains all animals with full details. Always prefer reading this file over making API calls — it's faster and doesn't hit rate limits.
 
+For lambing analysis, use the loader:
 ```python
-import json
-from pathlib import Path
+from agriwebb.analysis.lambing.loader import load_farm_data
+data = load_farm_data(season=2026)
+# data.animals, data.by_id, data.service_groups, data.loss_records
+```
 
-cache_file = Path('/Users/greene/Documents/dev/farm/.cache/animals.json')
-with open(cache_file) as f:
-    data = json.load(f)
-
-animals = data['animals']
+For raw access:
+```python
+from agriwebb.core.cache import load_cache_json
+animals = load_cache_json("animals.json", key="animals")
 by_id = {a['animalId']: a for a in animals}
 ```
 
@@ -151,27 +162,72 @@ by_id = {a['animalId']: a for a in animals}
 
 ## Common Analysis Patterns
 
-### Find intact breeding rams (not wethers)
+Use the lambing analysis loader for all livestock analysis:
 ```python
-rams = [a for a in animals
-        if (a.get('characteristics') or {}).get('sex') == 'Male'
-        and 'ram' in ((a.get('characteristics') or {}).get('ageClass') or '').lower()
-        and 'wether' not in ((a.get('characteristics') or {}).get('ageClass') or '').lower()
-        and (a.get('state') or {}).get('onFarm')]
+from agriwebb.analysis.lambing.loader import load_farm_data, get_name, get_breed, get_ancestors
+data = load_farm_data(season=2026)
 ```
 
-### Get ancestors for inbreeding check
-```python
-def get_ancestors(animal, by_id, depth=0, max_depth=6):
-    if not animal or depth > max_depth:
-        return set()
-    ancestors = set()
-    for parent_type in ['sires', 'dams']:
-        for p in ((animal.get('parentage') or {}).get(parent_type) or []):
-            pid = p.get('parentAnimalId')
-            if pid:
-                ancestors.add(pid)
-                if pid in by_id:
-                    ancestors.update(get_ancestors(by_id[pid], by_id, depth + 1, max_depth))
-    return ancestors
-```
+The loader provides typed helpers for animal classification, lineage, loss analysis,
+and breeding group membership. See `agriwebb/src/agriwebb/analysis/lambing/loader.py`.
+
+---
+
+## Lambing Analysis Conventions
+
+**These conventions are non-negotiable when analyzing lambing data for this farm.**
+
+### Counting lambs
+- **"Born" and sex counts = live lambs only** (`fate == 'Alive'`)
+- **`fate=Sold` = successfully raised/harvested** — this is a SUCCESS, never count as a loss
+- **`fate=Dead` = actual loss** — but must be further classified (see below)
+- Lambing rate = live lambs / ewes (per-lambed or per-joined — always label which)
+- Always show losses as a SEPARATE metric from lambing rate, never blended
+
+### Loss classification
+Deaths are NOT all "stillborn." Classify by mechanism:
+
+| Category | daysReared | Description |
+|----------|-----------|-------------|
+| **Prenatal** | N/A (found at delivery) | Died in utero before labor — mummified, underdeveloped, entangled |
+| **Intrapartum** | 0 or None | Died during delivery — breech, dystocia, cord complications |
+| **Perinatal** | 0 or None | Born alive, died within minutes/hours — asphyxia, hypothermia |
+| **Early loss** | 1–90 days | Neonatal/young lamb death — disease, FTT, enterotoxemia |
+| **Late death** | >90 days | Not lambing-related — accident, disease in older lambs |
+
+Use `#loss-*` hashtag tags in AgriWebb notes to categorize:
+`#loss-mummified`, `#loss-entangled`, `#loss-underdeveloped`, `#loss-dystocia`,
+`#loss-asphyxia`, `#loss-mismothering`, `#loss-hypothermia`, `#loss-weak`
+
+Detailed loss records are cached in `.cache/lamb_losses_YYYY.json`.
+
+### Language
+- Use respectful language about all animals — no dismissive framing
+- Say "loss" not "death" in reports; "no longer on farm" not "culled"
+- Present data clinically without value judgments on individual animals
+
+### Key findings (2026 season)
+- **Highest risk profile:** first-time mother, age 4+, carrying triplets+ = 28% loss rate
+- **Safest profile:** experienced ewe carrying twins = 0% loss (72 lambs, zero losses ever)
+- **First-time mothers lose 4.4× more lambs than experienced** (14.1% vs 3.2%)
+- **Breed ewes young:** first lambing at age 2–3 = 12% loss; age 4+ = 19% loss
+- **NCC×NCC is highest-risk breed cross** (15.4% loss vs 6.2% for NCC×other)
+- **Tyne (NCC ram) has 27% loss rate** on NCC dams — all 3 losses were female lambs
+- **Solar (Finnsheep ram) is the gold standard:** 59 lambs, 1.7% loss over 5 years
+- **Hope (NCC ram) is the best NCC sire:** 18 lambs, 0% loss, but 1 assisted birth (Andie, oxytocin)
+
+### NCC gene pool
+The NCC foundation is narrow — most ewes trace back to Perseus × Persephone.
+Three NCC AI donors are available: **Armadale-Winston** (sired Hope, cleanest line),
+**Achentoul-10097** (sired Tyne — mixed signal), **Calla-Andrew** (sired Quid).
+See `.cache/natural_service.json` for current breeding group data.
+
+### CDT vaccination timing
+Ewe pre-lambing CDT booster must be given **4 weeks before expected lambing start**
+(not 3–8 days, as was done in 2026). Lamb first CDT at marking (~4–6 weeks).
+
+### AgriWebb API gaps
+The public GraphQL API does NOT expose: Natural Service, Birth, Death, Lambing,
+Castrate, Wean, Sale, Tag, or Movement records. These are only in the portal UI.
+A Playwright MCP browser integration is configured for portal scraping when needed.
+Session data persists in `~/Library/Caches/ms-playwright/mcp-chrome-profile`.
