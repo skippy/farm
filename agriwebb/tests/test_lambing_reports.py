@@ -1,61 +1,15 @@
 """Tests for lambing season and loss report functions."""
 
 import pytest
+from conftest import make_animal, make_parent
 
 from agriwebb.analysis.lambing.loader import FarmData
 from agriwebb.analysis.lambing.losses import loss_report
 from agriwebb.analysis.lambing.season import lambing_season_report
 
-# ---------------------------------------------------------------------------
-# Test data builders (mirroring test_lambing_loader.py)
-# ---------------------------------------------------------------------------
-
-
-def _parent(parent_id: str, name: str | None = None, vid: str | None = None) -> dict:
-    return {
-        "parentAnimalId": parent_id,
-        "parentAnimalIdentity": {"name": name, "vid": vid, "eid": None},
-        "parentType": "Genetic",
-    }
-
-
-def _animal(
-    animal_id: str = "a1",
-    name: str | None = None,
-    vid: str | None = None,
-    eid: str | None = None,
-    breed: str = "North Country Cheviot",
-    sex: str = "Female",
-    age_class: str = "ewe",
-    birth_year: int = 2022,
-    on_farm: bool = True,
-    fate: str = "Alive",
-    days_reared: int | None = 500,
-    sires: list | None = None,
-    dams: list | None = None,
-) -> dict:
-    return {
-        "animalId": animal_id,
-        "identity": {"name": name, "vid": vid, "eid": eid, "managementTag": None},
-        "characteristics": {
-            "breedAssessed": breed,
-            "sex": sex,
-            "ageClass": age_class,
-            "birthYear": birth_year,
-            "birthDate": None,
-            "speciesCommonName": "Sheep",
-            "visualColor": None,
-        },
-        "state": {
-            "onFarm": on_farm,
-            "fate": fate,
-            "daysReared": days_reared,
-            "currentLocationId": None,
-            "reproductiveStatus": None,
-            "offspringCount": None,
-        },
-        "parentage": {"sires": sires or [], "dams": dams or []},
-    }
+# Aliases for readability
+_animal = make_animal
+_parent = make_parent
 
 
 # ---------------------------------------------------------------------------

@@ -96,17 +96,33 @@ async def _sync_natural_service(client, cache_dir: Path):
             }
         )
 
-    # Save in the portal cache
+    now = datetime.now(UTC).isoformat()
+
+    # Save in the portal cache (detailed format)
     cache_file = get_cache_dir() / "portal" / "natural-service-parsed.json"
     with open(cache_file, "w") as f:
-        json.dump(
-            {
-                "synced_at": datetime.now(UTC).isoformat(),
-                "count": len(groups),
-                "groups": groups,
-            },
-            f,
-            indent=2,
-        )
+        json.dump({"synced_at": now, "count": len(groups), "groups": groups}, f, indent=2)
+
+    # Also write to .cache/natural_service.json in the format the loader expects
+    loader_groups = []
+    for g in groups:
+        loader_groups.append({
+            "sire_name": None,  # Would need animal lookup to resolve; left for enrichment
+            "start_date": None,
+            "end_date": None,
+            "ewe_count": g["ewe_count"],
+            "ewes": [{"animalId": eid} for eid in g["ewe_ids"]],
+            "ram_ids": g["ram_ids"],
+            "start_date_ms": g.get("start_date_ms"),
+            "end_date_ms": g.get("end_date_ms"),
+        })
+
+    loader_file = get_cache_dir() / "natural_service.json"
+    with open(loader_file, "w") as f:
+        json.dump({
+            "source": "portal event-sourcing API",
+            "scraped_at": now,
+            "groups": loader_groups,
+        }, f, indent=2)
 
     print(f"  natural-service (parsed): {len(groups)} groups")

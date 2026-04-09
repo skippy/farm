@@ -4,6 +4,10 @@ import json
 
 import pytest
 
+# Shared builders from conftest
+from conftest import make_animal as _animal
+from conftest import make_parent as _parent
+
 from agriwebb.analysis.lambing.loader import (
     classify_loss,
     get_age_at_first_lambing,
@@ -37,67 +41,6 @@ from agriwebb.analysis.lambing.loader import (
     load_farm_data,
     was_raised,
 )
-
-# ---------------------------------------------------------------------------
-# Test data builders
-# ---------------------------------------------------------------------------
-
-def _parent(parent_id: str, name: str | None = None, vid: str | None = None) -> dict:
-    """Build a parent reference in AgriWebb format."""
-    return {
-        "parentAnimalId": parent_id,
-        "parentAnimalIdentity": {"name": name, "vid": vid, "eid": None},
-        "parentType": "Genetic",
-    }
-
-
-def _animal(
-    animal_id: str = "a1",
-    name: str | None = None,
-    vid: str | None = None,
-    eid: str | None = None,
-    breed: str = "North Country Cheviot",
-    sex: str = "Female",
-    age_class: str = "ewe",
-    birth_year: int = 2022,
-    on_farm: bool = True,
-    fate: str = "Alive",
-    days_reared: int | None = 500,
-    sires: list | None = None,
-    dams: list | None = None,
-) -> dict:
-    """Build a minimal animal dict matching the animals.json shape."""
-    return {
-        "animalId": animal_id,
-        "identity": {
-            "name": name,
-            "vid": vid,
-            "eid": eid,
-            "managementTag": None,
-        },
-        "characteristics": {
-            "breedAssessed": breed,
-            "sex": sex,
-            "ageClass": age_class,
-            "birthYear": birth_year,
-            "birthDate": None,
-            "speciesCommonName": "Sheep",
-            "visualColor": None,
-        },
-        "state": {
-            "onFarm": on_farm,
-            "fate": fate,
-            "daysReared": days_reared,
-            "currentLocationId": None,
-            "reproductiveStatus": None,
-            "offspringCount": None,
-        },
-        "parentage": {
-            "sires": sires or [],
-            "dams": dams or [],
-        },
-    }
-
 
 # ---------------------------------------------------------------------------
 # Shared fixtures

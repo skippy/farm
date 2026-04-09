@@ -1,10 +1,75 @@
-"""Shared test fixtures."""
+"""Shared test fixtures and builders."""
+
+from __future__ import annotations
 
 import sys
 from pathlib import Path
 
 import pytest
 import respx
+
+# ---------------------------------------------------------------------------
+# Animal data builders — used by lambing loader, reports, and MCP tests
+# ---------------------------------------------------------------------------
+
+
+def make_parent(parent_id: str, name: str | None = None, vid: str | None = None) -> dict:
+    """Build a parentage entry (sire or dam reference)."""
+    return {
+        "parentAnimalId": parent_id,
+        "parentAnimalIdentity": {"name": name, "vid": vid, "eid": None},
+        "parentType": "Genetic",
+    }
+
+
+def make_animal(
+    animal_id: str = "a1",
+    name: str | None = None,
+    vid: str | None = None,
+    eid: str | None = None,
+    breed: str = "North Country Cheviot",
+    sex: str = "Female",
+    age_class: str = "ewe",
+    birth_year: int = 2022,
+    on_farm: bool = True,
+    fate: str = "Alive",
+    days_reared: int | None = 500,
+    sires: list | None = None,
+    dams: list | None = None,
+    mgmt_group_id: str | None = None,
+) -> dict:
+    """Build a minimal animal dict matching the animals.json shape."""
+    return {
+        "animalId": animal_id,
+        "identity": {
+            "name": name,
+            "vid": vid,
+            "eid": eid,
+            "managementTag": None,
+        },
+        "characteristics": {
+            "breedAssessed": breed,
+            "sex": sex,
+            "ageClass": age_class,
+            "birthYear": birth_year,
+            "birthDate": None,
+            "speciesCommonName": "Sheep",
+            "visualColor": None,
+        },
+        "state": {
+            "onFarm": on_farm,
+            "fate": fate,
+            "daysReared": days_reared,
+            "currentLocationId": None,
+            "reproductiveStatus": None,
+            "offspringCount": None,
+        },
+        "parentage": {
+            "sires": sires or [],
+            "dams": dams or [],
+        },
+        "managementGroupId": mgmt_group_id,
+    }
 
 # Add src/ to path so tests can import agriwebb
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
