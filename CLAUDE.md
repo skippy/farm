@@ -8,6 +8,8 @@ This workspace contains tools for farm management, primarily integrating with Ag
 farm/
 ├── .cache/                        # Local data cache (gitignored)
 │   ├── animals.json               # All animals with records
+│   ├── natural_service.json       # Breeding groups (scraped from portal)
+│   ├── lamb_losses_YYYY.json      # Categorized losses per year
 │   ├── paddock_soils.json         # USDA soil data per paddock
 │   ├── weather_historical.json    # Open-Meteo weather (2018+)
 │   ├── noaa_weather.json          # NOAA station data
@@ -17,6 +19,16 @@ farm/
 ├── .github/workflows/             # GitHub Actions (daily/weekly sync)
 ├── agriwebb/                      # AgriWebb integration package
 │   ├── src/agriwebb/
+│   │   ├── analysis/lambing/      # Lambing analysis (loader, reports)
+│   │   ├── core/                  # Shared utilities (cache, config, timestamps)
+│   │   ├── data/                  # Livestock, soils, grazing data
+│   │   ├── pasture/               # Growth models, biomass, SDM
+│   │   ├── satellite/             # GEE NDVI, NLCD, moss detection
+│   │   ├── sync/                  # Push data to AgriWebb
+│   │   ├── weather/               # NOAA, Open-Meteo, rainfall
+│   │   └── mcp_server.py          # MCP server (10 livestock analysis tools)
+│   ├── docs/
+│   │   └── lambing-analysis.md    # Full lambing conventions & methodology
 │   └── tests/
 └── CLAUDE.md                      # This file
 ```
@@ -86,19 +98,53 @@ agriwebb-pasture sync --growth-rate --dry-run      # Daily growth
 agriwebb-pasture sync --sdm --dry-run              # Weekly SDM
 ```
 
+## MCP Servers
+
+### AgriWebb Data Tools (`agriwebb`)
+Provides livestock analysis tools that operate on cached data (no API calls):
+- `get_animal(identifier)` — look up by name/VID/EID/ID (enriched with portal notes/death details)
+- `get_lambs(year?, dam?, sire?)` — all lambs for a season with outcomes, filterable
+- `get_offspring(parent, year?)` — offspring, optionally by birth year
+- `get_ancestors(animal, max_depth?)` — ancestor tree for inbreeding checks
+- `get_litter(dam, year)` — one ewe's lambs in one year with outcomes
+- `get_lambing_season(year?)` — season dashboard (live lambs, rates, litter distribution)
+- `get_sire_stats(sire?)` — loss rate per sire across all years
+- `get_joining_groups(year?)` — natural service groups from portal data
+- `get_ncc_compatibility(ram, ewe)` — shared ancestors + inbreeding risk
+- `get_breedable_ewes(breed?)` — on-farm breeding-age females
+- `get_notes(animal)` — clinical notes from portal data
+- `get_death_details(animal)` — loss reason/details from portal death records
+- `get_ai_records()` — artificial insemination records with donor sire details
+
+Registered as: `claude mcp add agriwebb -- uv run --project agriwebb python -m agriwebb.mcp_server`
+
+### Playwright (`playwright`)
+Browser automation for scraping AgriWebb portal pages the API doesn't expose.
+Persistent login session in `~/Library/Caches/ms-playwright/mcp-chrome-profile`.
+
+### Lambing Reports CLI
+```bash
+agriwebb-lambing season                 # Lambing dashboard (current year)
+agriwebb-lambing season --year 2025     # Historical
+agriwebb-lambing losses                 # Loss breakdown by category
+agriwebb-lambing losses --json          # Structured output
+```
+
 ## Local Data Analysis
 
-The `.cache/animals.json` file contains all animals with full details. Always prefer reading this file over making API calls - it's faster and doesn't hit rate limits.
+The `.cache/animals.json` file contains all animals with full details. Always prefer reading this file over making API calls — it's faster and doesn't hit rate limits.
 
+For lambing analysis, use the loader:
 ```python
-import json
-from pathlib import Path
+from agriwebb.analysis.lambing.loader import load_farm_data
+data = load_farm_data(season=2026)
+# data.animals, data.by_id, data.service_groups, data.loss_records
+```
 
-cache_file = Path('/Users/greene/Documents/dev/farm/.cache/animals.json')
-with open(cache_file) as f:
-    data = json.load(f)
-
-animals = data['animals']
+For raw access:
+```python
+from agriwebb.core.cache import load_cache_json
+animals = load_cache_json("animals.json", key="animals")
 by_id = {a['animalId']: a for a in animals}
 ```
 
@@ -151,27 +197,32 @@ by_id = {a['animalId']: a for a in animals}
 
 ## Common Analysis Patterns
 
-### Find intact breeding rams (not wethers)
+Use the lambing analysis loader for all livestock analysis:
 ```python
-rams = [a for a in animals
-        if (a.get('characteristics') or {}).get('sex') == 'Male'
-        and 'ram' in ((a.get('characteristics') or {}).get('ageClass') or '').lower()
-        and 'wether' not in ((a.get('characteristics') or {}).get('ageClass') or '').lower()
-        and (a.get('state') or {}).get('onFarm')]
+from agriwebb.analysis.lambing.loader import load_farm_data, get_name, get_breed, get_ancestors
+data = load_farm_data(season=2026)
 ```
 
-### Get ancestors for inbreeding check
-```python
-def get_ancestors(animal, by_id, depth=0, max_depth=6):
-    if not animal or depth > max_depth:
-        return set()
-    ancestors = set()
-    for parent_type in ['sires', 'dams']:
-        for p in ((animal.get('parentage') or {}).get(parent_type) or []):
-            pid = p.get('parentAnimalId')
-            if pid:
-                ancestors.add(pid)
-                if pid in by_id:
-                    ancestors.update(get_ancestors(by_id[pid], by_id, depth + 1, max_depth))
-    return ancestors
-```
+The loader provides typed helpers for animal classification, lineage, loss analysis,
+and breeding group membership. See `agriwebb/src/agriwebb/analysis/lambing/loader.py`.
+
+---
+
+## Lambing Analysis
+
+**Full analysis conventions, methodology, risk factors, and findings are in
+[`agriwebb/docs/lambing-analysis.md`](agriwebb/docs/lambing-analysis.md).**
+Read that document before doing any lambing-related analysis.
+
+Key non-negotiable conventions (summary — see the doc for detail):
+- **"Born" and sex counts = live lambs only** (`fate == 'Alive'`)
+- **`fate=Sold` = successfully raised/harvested** — this is a SUCCESS, never count as a loss
+- Lambing rate = live lambs / ewes; losses tracked separately, never blended
+- Classify losses by mechanism (prenatal/intrapartum/perinatal/early/late), not as generic "stillborn"
+- Use respectful language about all animals
+
+### AgriWebb API gaps
+The public GraphQL API does NOT expose: Natural Service, Birth, Death, Lambing,
+Castrate, Wean, Sale, Tag, or Movement records. These are only in the portal UI.
+A Playwright MCP browser integration is configured for portal scraping when needed.
+Session data persists in `~/Library/Caches/ms-playwright/mcp-chrome-profile`.
