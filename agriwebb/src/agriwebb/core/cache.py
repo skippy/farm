@@ -22,8 +22,7 @@ def load_cache_json(filename: str, *, key: str | None = None, default=None):
     path = get_cache_dir() / filename
     if not path.exists():
         raise FileNotFoundError(
-            f"Cache file not found: {path}\n"
-            f"Run the appropriate sync command first to populate the cache."
+            f"Cache file not found: {path}\nRun the appropriate sync command first to populate the cache."
         )
     with open(path) as f:
         data = json.load(f)

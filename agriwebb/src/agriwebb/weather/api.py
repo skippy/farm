@@ -165,7 +165,7 @@ async def get_rainfalls(
         time_filter = f", time: {{ {', '.join(time_filter_parts)} }}" if time_filter_parts else ""
 
         query = f"""
-        query GetRainfallsFiltered({', '.join(var_defs)}) {{
+        query GetRainfallsFiltered({", ".join(var_defs)}) {{
           rainfalls(filter: {{
             farmId: {{ _eq: $farmId }}
             sensorId: {{ _eq: $sensorId }}

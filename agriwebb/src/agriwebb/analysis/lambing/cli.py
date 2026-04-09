@@ -114,9 +114,7 @@ def _print_loss_report(report: dict) -> None:
         print(f"\n  {'Dam':<16} {'Breed':<18} {'Litter':>6} {'Lost':>5}  Category")
         print(f"  {'-' * 64}")
         for d in by_dam:
-            print(
-                f"  {d['dam']:<16} {d['breed']:<18} {d['litter_size']:>6} {d['lost']:>5}  {d['category']}"
-            )
+            print(f"  {d['dam']:<16} {d['breed']:<18} {d['litter_size']:>6} {d['lost']:>5}  {d['category']}")
 
     # By sire
     by_sire = report["by_sire"]
@@ -130,7 +128,9 @@ def _print_loss_report(report: dict) -> None:
     # Year over year
     yoy = report["year_over_year"]
     if yoy:
-        print(f"\n  {'Year':>6} {'Dams':>5} {'Born':>5} {'Raised':>7} {'Still':>6} {'Early':>6} {'Late':>5} {'Surv%':>6}")
+        print(
+            f"\n  {'Year':>6} {'Dams':>5} {'Born':>5} {'Raised':>7} {'Still':>6} {'Early':>6} {'Late':>5} {'Surv%':>6}"
+        )
         print(f"  {'-' * 52}")
         for y in yoy:
             print(

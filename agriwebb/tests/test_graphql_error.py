@@ -38,7 +38,9 @@ class TestGraphQLErrorInit:
         assert exc.query is None
 
     def test_long_query_is_truncated(self):
-        query = "query GetFields($farmId: String!) { fields(filter: { farmId: { _eq: $farmId } }) { id name totalArea } }"
+        query = (
+            "query GetFields($farmId: String!) { fields(filter: { farmId: { _eq: $farmId } }) { id name totalArea } }"
+        )
         exc = GraphQLError([{"message": "error"}], query=query)
         assert len(exc.query) == 53  # 50 chars + "..."
         assert exc.query.endswith("...")

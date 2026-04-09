@@ -589,11 +589,13 @@ async def get_notes(animal: str) -> str:
 
     notes = _find_portal_records_for_animal(found["animalId"], "note-record")
     if not notes:
-        return json.dumps({
-            "animal": loader.get_name(found),
-            "notes": [],
-            "message": "No notes found. Portal data may need refreshing.",
-        })
+        return json.dumps(
+            {
+                "animal": loader.get_name(found),
+                "notes": [],
+                "message": "No notes found. Portal data may need refreshing.",
+            }
+        )
 
     return json.dumps(
         {
@@ -625,16 +627,20 @@ async def get_death_details(animal: str) -> str:
     if not deaths:
         fate = (found.get("state") or {}).get("fate")
         if fate == "Dead":
-            return json.dumps({
+            return json.dumps(
+                {
+                    "animal": loader.get_name(found),
+                    "fate": "Dead",
+                    "message": "No portal death record found. Portal data may need refreshing.",
+                }
+            )
+        return json.dumps(
+            {
                 "animal": loader.get_name(found),
-                "fate": "Dead",
-                "message": "No portal death record found. Portal data may need refreshing.",
-            })
-        return json.dumps({
-            "animal": loader.get_name(found),
-            "fate": fate,
-            "message": "This animal is not recorded as dead.",
-        })
+                "fate": fate,
+                "message": "This animal is not recorded as dead.",
+            }
+        )
 
     d = deaths[0]
     fate = d.get("fate") or {}
@@ -675,13 +681,15 @@ async def get_ai_records() -> str:
             if a:
                 ewe_names.append(loader.get_name(a))
 
-        results.append({
-            "date": rec.get("observationDate"),
-            "sireName": sire_details.get("name"),
-            "sireBreed": sire_details.get("breed"),
-            "semenType": straw.get("semenType"),
-            "ewes": ewe_names,
-        })
+        results.append(
+            {
+                "date": rec.get("observationDate"),
+                "sireName": sire_details.get("name"),
+                "sireBreed": sire_details.get("breed"),
+                "semenType": straw.get("semenType"),
+                "ewes": ewe_names,
+            }
+        )
 
     return json.dumps({"count": len(results), "records": results}, indent=2)
 
