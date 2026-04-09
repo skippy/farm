@@ -25,7 +25,10 @@ farm/
 │   │   ├── pasture/               # Growth models, biomass, SDM
 │   │   ├── satellite/             # GEE NDVI, NLCD, moss detection
 │   │   ├── sync/                  # Push data to AgriWebb
-│   │   └── weather/               # NOAA, Open-Meteo, rainfall
+│   │   ├── weather/               # NOAA, Open-Meteo, rainfall
+│   │   └── mcp_server.py          # MCP server (10 livestock analysis tools)
+│   ├── docs/
+│   │   └── lambing-analysis.md    # Full lambing conventions & methodology
 │   └── tests/
 └── CLAUDE.md                      # This file
 ```
@@ -93,6 +96,35 @@ Run locally to test:
 agriwebb-weather sync --days 7 --dry-run           # Daily weather
 agriwebb-pasture sync --growth-rate --dry-run      # Daily growth
 agriwebb-pasture sync --sdm --dry-run              # Weekly SDM
+```
+
+## MCP Servers
+
+### AgriWebb Data Tools (`agriwebb`)
+Provides 10 livestock analysis tools that operate on cached data (no API calls):
+- `get_animal(identifier)` — look up by name/VID/EID/ID
+- `get_offspring(parent, year?)` — offspring, optionally by birth year
+- `get_ancestors(animal, max_depth?)` — ancestor tree for inbreeding checks
+- `get_litter(dam, year)` — one ewe's lambs in one year with outcomes
+- `get_lambing_season(year?)` — season dashboard (live lambs, rates, litter distribution)
+- `get_losses(year?)` — loss breakdown by category/sire/dam
+- `get_sire_stats(sire?)` — loss rate per sire across all years
+- `get_joining_groups(year?)` — natural service groups from portal data
+- `get_ncc_compatibility(ram, ewe)` — shared ancestors + inbreeding risk
+- `get_breedable_ewes(breed?)` — on-farm breeding-age females
+
+Registered as: `claude mcp add agriwebb -- uv run --project agriwebb python -m agriwebb.mcp_server`
+
+### Playwright (`playwright`)
+Browser automation for scraping AgriWebb portal pages the API doesn't expose.
+Persistent login session in `~/Library/Caches/ms-playwright/mcp-chrome-profile`.
+
+### Lambing Reports CLI
+```bash
+agriwebb-lambing season                 # Lambing dashboard (current year)
+agriwebb-lambing season --year 2025     # Historical
+agriwebb-lambing losses                 # Loss breakdown by category
+agriwebb-lambing losses --json          # Structured output
 ```
 
 ## Local Data Analysis
