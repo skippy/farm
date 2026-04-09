@@ -1,8 +1,7 @@
 """AgriWebb API functions for pasture/growth data."""
 
-from datetime import UTC, date, datetime
-
 from agriwebb.core.config import settings
+from agriwebb.core.timestamps import to_timestamp_ms
 
 # =============================================================================
 # GraphQL Queries
@@ -63,14 +62,6 @@ mutation AddStandingDryMatter($input: [AddTotalStandingDryMatterInput!]!) {
 """
 
 
-def _to_timestamp_ms(d: str | date) -> int:
-    """Convert a date string or date object to milliseconds timestamp (noon UTC)."""
-    if isinstance(d, str):
-        d = date.fromisoformat(d)
-    dt = datetime(d.year, d.month, d.day, hour=12, tzinfo=UTC)
-    return int(dt.timestamp() * 1000)
-
-
 # =============================================================================
 # API Functions
 # =============================================================================
@@ -92,7 +83,7 @@ async def add_pasture_growth_rates_batch(
 
     inputs = []
     for rec in records:
-        timestamp_ms = _to_timestamp_ms(rec["record_date"])
+        timestamp_ms = to_timestamp_ms(rec["record_date"])
         inputs.append(
             {
                 "value": round(rec["growth_rate"], 1),
@@ -129,7 +120,7 @@ async def add_feed_on_offer_batch(
 
     inputs = []
     for rec in records:
-        timestamp_ms = _to_timestamp_ms(rec["record_date"])
+        timestamp_ms = to_timestamp_ms(rec["record_date"])
         inputs.append(
             {
                 "value": round(rec["foo_kg_ha"], 0),
@@ -166,7 +157,7 @@ async def add_standing_dry_matter_batch(
 
     inputs = []
     for rec in records:
-        timestamp_ms = _to_timestamp_ms(rec["record_date"])
+        timestamp_ms = to_timestamp_ms(rec["record_date"])
         inputs.append(
             {
                 "value": round(rec["sdm_kg_ha"], 0),
@@ -196,18 +187,24 @@ async def get_pasture_growth_rates(
     from agriwebb.core.client import graphql_with_retry
 
     if start_date or end_date:
-        # Build time filter - must combine _gte and _lte in a single time object
-        time_conditions = []
+        # Build parameterized time-filtered query
+        var_defs = ["$farmId: String!"]
+        time_filter_parts = []
+        variables = {"farmId": settings.agriwebb_farm_id}
         if start_date:
-            time_conditions.append(f"_gte: {_to_timestamp_ms(start_date)}")
+            var_defs.append("$startTime: Timestamp!")
+            time_filter_parts.append("_gte: $startTime")
+            variables["startTime"] = to_timestamp_ms(start_date)
         if end_date:
-            time_conditions.append(f"_lte: {_to_timestamp_ms(end_date)}")
-        time_filter = f", time: {{ {', '.join(time_conditions)} }}" if time_conditions else ""
+            var_defs.append("$endTime: Timestamp!")
+            time_filter_parts.append("_lte: $endTime")
+            variables["endTime"] = to_timestamp_ms(end_date)
+        time_filter = f", time: {{ {', '.join(time_filter_parts)} }}" if time_filter_parts else ""
 
         query = f"""
-        {{
+        query GetPastureGrowthRatesFiltered({', '.join(var_defs)}) {{
           pastureGrowthRates(filter: {{
-            farmId: {{ _eq: "{settings.agriwebb_farm_id}" }}
+            farmId: {{ _eq: $farmId }}
             {time_filter}
           }}) {{
             id
@@ -217,7 +214,7 @@ async def get_pasture_growth_rates(
           }}
         }}
         """
-        result = await graphql_with_retry(query)
+        result = await graphql_with_retry(query, variables)
     else:
         variables = {"farmId": settings.agriwebb_farm_id}
         result = await graphql_with_retry(PASTURE_GROWTH_RATES_QUERY, variables)

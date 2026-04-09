@@ -1,0 +1,8 @@
+# Credentials — never commit
+.env
+service-account.json
+*.pem
+*.key
+
+# Allow the example
+!.env.example

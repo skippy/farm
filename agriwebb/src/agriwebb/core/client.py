@@ -1,5 +1,6 @@
 """AgriWebb API client - core functions only."""
 
+import re
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
@@ -32,11 +33,28 @@ MAX_WAIT_SECONDS = 10
 class GraphQLError(Exception):
     """Raised when a GraphQL query returns errors."""
 
+    # Matches UUIDs and UUID-like hex strings (8-4-4-4-12 or 32+ hex chars)
+    _UUID_RE = re.compile(
+        r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+    )
+
     def __init__(self, errors: list[dict], query: str | None = None):
         self.errors = errors
-        self.query = query
+        self.query = self._redact_query(query) if query is not None else None
         messages = [e.get("message", str(e)) for e in errors]
         super().__init__(f"GraphQL errors: {'; '.join(messages)}")
+
+    @classmethod
+    def _redact_query(cls, query: str) -> str:
+        """Redact sensitive info from a query string.
+
+        - Replaces UUID-like patterns with [REDACTED]
+        - Truncates to first 50 characters + "..." if longer
+        """
+        redacted = cls._UUID_RE.sub("[REDACTED]", query)
+        if len(redacted) > 50:
+            redacted = redacted[:50] + "..."
+        return redacted
 
 
 class RetryableError(Exception):
@@ -316,6 +334,26 @@ async def get_map_feature(feature_id: str) -> dict:
     return features[0]
 
 
+UPDATE_MAP_FEATURE_MUTATION = """
+mutation UpdateMapFeature($farmId: String!, $featureId: String!, $name: String!, $geometryType: String!, $coordinates: JSON!) {
+  updateMapFeature(input: {
+    farmId: $farmId
+    id: $featureId
+    name: $name
+    geometry: {
+      type: $geometryType
+      coordinates: $coordinates
+    }
+  }) {
+    mapFeature {
+      id
+      name
+    }
+  }
+}
+"""
+
+
 async def update_map_feature(feature_id: str, name: str) -> dict:
     """
     Update a map feature's name.
@@ -326,36 +364,19 @@ async def update_map_feature(feature_id: str, name: str) -> dict:
 
     Returns:
         API response
-
-    Note:
-        This function still uses f-string interpolation for the geometry
-        object due to its complex nested structure that doesn't map cleanly
-        to GraphQL input types.
     """
     # Fetch current feature to get geometry (required for update)
     feature = await get_map_feature(feature_id)
     geometry = feature.get("geometry", {})
 
-    # Note: geometry requires special handling - keeping f-string for this mutation
-    mutation = f"""
-    mutation {{
-      updateMapFeature(input: {{
-        farmId: "{settings.agriwebb_farm_id}"
-        id: "{feature_id}"
-        name: "{name}"
-        geometry: {{
-          type: {geometry.get("type", "Point")}
-          coordinates: {geometry.get("coordinates", [])}
-        }}
-      }}) {{
-        mapFeature {{
-          id
-          name
-        }}
-      }}
-    }}
-    """
-    return await graphql_with_retry(mutation)
+    variables = {
+        "farmId": settings.agriwebb_farm_id,
+        "featureId": feature_id,
+        "name": name,
+        "geometryType": geometry.get("type", "Point"),
+        "coordinates": geometry.get("coordinates", []),
+    }
+    return await graphql_with_retry(UPDATE_MAP_FEATURE_MUTATION, variables)
 
 
 async def get_fields(min_area_ha: float = 0.2) -> list[dict]:

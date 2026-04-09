@@ -1,6 +1,7 @@
 """Core module - configuration and API client."""
 
 from agriwebb.core import client, units
+from agriwebb.core.cache import load_cache_json
 from agriwebb.core.client import (
     AgriWebbAPIError,
     ExternalAPIError,
@@ -18,6 +19,7 @@ from agriwebb.core.client import (
     update_map_feature,
 )
 from agriwebb.core.config import get_cache_dir, settings
+from agriwebb.core.timestamps import to_timestamp_ms
 from agriwebb.core.units import (
     format_precip,
     format_precip_summary,
@@ -36,6 +38,8 @@ __all__ = [
     "units",
     "settings",
     "get_cache_dir",
+    "load_cache_json",
+    "to_timestamp_ms",
     "graphql",
     "graphql_with_retry",
     "http_get_with_retry",

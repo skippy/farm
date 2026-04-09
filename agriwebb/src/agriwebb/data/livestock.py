@@ -352,21 +352,27 @@ async def find_animal(identifier: str) -> dict:
         ValueError: If no animal found or multiple matches
     """
     farm_id = settings.agriwebb_farm_id
+    variables = {"farmId": farm_id, "identifier": identifier}
 
-    # Try by animalId first
-    query = f"""
-    {{
-      animals(farmId: "{farm_id}", filter: {{ animalId: {{ _eq: "{identifier}" }} }}) {{
+    # Common selection set for all lookup queries
+    _fields = f"""
         animalId
         {ANIMAL_IDENTITY_FIELDS}
         {ANIMAL_CHARACTERISTICS_FIELDS}
         {ANIMAL_STATE_FIELDS}
         {PARENTAGE_FIELDS}
         {MANAGEMENT_GROUP_FIELDS}
+    """
+
+    # Try by animalId first
+    query = f"""
+    query FindAnimalById($farmId: String!, $identifier: String!) {{
+      animals(farmId: $farmId, filter: {{ animalId: {{ _eq: $identifier }} }}) {{
+        {_fields}
       }}
     }}
     """
-    result = await graphql_with_retry(query)
+    result = await graphql_with_retry(query, variables)
 
     animals = result.get("data", {}).get("animals", [])
 
@@ -375,18 +381,13 @@ async def find_animal(identifier: str) -> dict:
 
     # Try by name (case-insensitive search via _ilike if supported, otherwise _eq)
     query = f"""
-    {{
-      animals(farmId: "{farm_id}", filter: {{ identity: {{ name: {{ _eq: "{identifier}" }} }} }}) {{
-        animalId
-        {ANIMAL_IDENTITY_FIELDS}
-        {ANIMAL_CHARACTERISTICS_FIELDS}
-        {ANIMAL_STATE_FIELDS}
-        {PARENTAGE_FIELDS}
-        {MANAGEMENT_GROUP_FIELDS}
+    query FindAnimalByName($farmId: String!, $identifier: String!) {{
+      animals(farmId: $farmId, filter: {{ identity: {{ name: {{ _eq: $identifier }} }} }}) {{
+        {_fields}
       }}
     }}
     """
-    result = await graphql_with_retry(query)
+    result = await graphql_with_retry(query, variables)
 
     animals = result.get("data", {}).get("animals", [])
 
@@ -401,18 +402,13 @@ async def find_animal(identifier: str) -> dict:
 
     # Try by vid (visual tag)
     query = f"""
-    {{
-      animals(farmId: "{farm_id}", filter: {{ identity: {{ vid: {{ _eq: "{identifier}" }} }} }}) {{
-        animalId
-        {ANIMAL_IDENTITY_FIELDS}
-        {ANIMAL_CHARACTERISTICS_FIELDS}
-        {ANIMAL_STATE_FIELDS}
-        {PARENTAGE_FIELDS}
-        {MANAGEMENT_GROUP_FIELDS}
+    query FindAnimalByVid($farmId: String!, $identifier: String!) {{
+      animals(farmId: $farmId, filter: {{ identity: {{ vid: {{ _eq: $identifier }} }} }}) {{
+        {_fields}
       }}
     }}
     """
-    result = await graphql_with_retry(query)
+    result = await graphql_with_retry(query, variables)
 
     animals = result.get("data", {}).get("animals", [])
 
@@ -427,18 +423,13 @@ async def find_animal(identifier: str) -> dict:
 
     # Try by eid
     query = f"""
-    {{
-      animals(farmId: "{farm_id}", filter: {{ identity: {{ eid: {{ _eq: "{identifier}" }} }} }}) {{
-        animalId
-        {ANIMAL_IDENTITY_FIELDS}
-        {ANIMAL_CHARACTERISTICS_FIELDS}
-        {ANIMAL_STATE_FIELDS}
-        {PARENTAGE_FIELDS}
-        {MANAGEMENT_GROUP_FIELDS}
+    query FindAnimalByEid($farmId: String!, $identifier: String!) {{
+      animals(farmId: $farmId, filter: {{ identity: {{ eid: {{ _eq: $identifier }} }} }}) {{
+        {_fields}
       }}
     }}
     """
-    result = await graphql_with_retry(query)
+    result = await graphql_with_retry(query, variables)
 
     animals = result.get("data", {}).get("animals", [])
 
