@@ -173,58 +173,18 @@ and breeding group membership. See `agriwebb/src/agriwebb/analysis/lambing/loade
 
 ---
 
-## Lambing Analysis Conventions
+## Lambing Analysis
 
-**These conventions are non-negotiable when analyzing lambing data for this farm.**
+**Full analysis conventions, methodology, risk factors, and findings are in
+[`agriwebb/docs/lambing-analysis.md`](agriwebb/docs/lambing-analysis.md).**
+Read that document before doing any lambing-related analysis.
 
-### Counting lambs
+Key non-negotiable conventions (summary — see the doc for detail):
 - **"Born" and sex counts = live lambs only** (`fate == 'Alive'`)
 - **`fate=Sold` = successfully raised/harvested** — this is a SUCCESS, never count as a loss
-- **`fate=Dead` = actual loss** — but must be further classified (see below)
-- Lambing rate = live lambs / ewes (per-lambed or per-joined — always label which)
-- Always show losses as a SEPARATE metric from lambing rate, never blended
-
-### Loss classification
-Deaths are NOT all "stillborn." Classify by mechanism:
-
-| Category | daysReared | Description |
-|----------|-----------|-------------|
-| **Prenatal** | N/A (found at delivery) | Died in utero before labor — mummified, underdeveloped, entangled |
-| **Intrapartum** | 0 or None | Died during delivery — breech, dystocia, cord complications |
-| **Perinatal** | 0 or None | Born alive, died within minutes/hours — asphyxia, hypothermia |
-| **Early loss** | 1–90 days | Neonatal/young lamb death — disease, FTT, enterotoxemia |
-| **Late death** | >90 days | Not lambing-related — accident, disease in older lambs |
-
-Use `#loss-*` hashtag tags in AgriWebb notes to categorize:
-`#loss-mummified`, `#loss-entangled`, `#loss-underdeveloped`, `#loss-dystocia`,
-`#loss-asphyxia`, `#loss-mismothering`, `#loss-hypothermia`, `#loss-weak`
-
-Detailed loss records are cached in `.cache/lamb_losses_YYYY.json`.
-
-### Language
-- Use respectful language about all animals — no dismissive framing
-- Say "loss" not "death" in reports; "no longer on farm" not "culled"
-- Present data clinically without value judgments on individual animals
-
-### Key findings (2026 season)
-- **Highest risk profile:** first-time mother, age 4+, carrying triplets+ = 28% loss rate
-- **Safest profile:** experienced ewe carrying twins = 0% loss (72 lambs, zero losses ever)
-- **First-time mothers lose 4.4× more lambs than experienced** (14.1% vs 3.2%)
-- **Breed ewes young:** first lambing at age 2–3 = 12% loss; age 4+ = 19% loss
-- **NCC×NCC is highest-risk breed cross** (15.4% loss vs 6.2% for NCC×other)
-- **Tyne (NCC ram) has 27% loss rate** on NCC dams — all 3 losses were female lambs
-- **Solar (Finnsheep ram) is the gold standard:** 59 lambs, 1.7% loss over 5 years
-- **Hope (NCC ram) is the best NCC sire:** 18 lambs, 0% loss, but 1 assisted birth (Andie, oxytocin)
-
-### NCC gene pool
-The NCC foundation is narrow — most ewes trace back to Perseus × Persephone.
-Three NCC AI donors are available: **Armadale-Winston** (sired Hope, cleanest line),
-**Achentoul-10097** (sired Tyne — mixed signal), **Calla-Andrew** (sired Quid).
-See `.cache/natural_service.json` for current breeding group data.
-
-### CDT vaccination timing
-Ewe pre-lambing CDT booster must be given **4 weeks before expected lambing start**
-(not 3–8 days, as was done in 2026). Lamb first CDT at marking (~4–6 weeks).
+- Lambing rate = live lambs / ewes; losses tracked separately, never blended
+- Classify losses by mechanism (prenatal/intrapartum/perinatal/early/late), not as generic "stillborn"
+- Use respectful language about all animals
 
 ### AgriWebb API gaps
 The public GraphQL API does NOT expose: Natural Service, Birth, Death, Lambing,
