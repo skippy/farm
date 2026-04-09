@@ -13,6 +13,7 @@ dependencies = [
     "kaleido>=1.2.0",
     "tenacity>=9.0.0",
     "pint>=0.24",
+    "mcp>=1.27.0",
 ]
 
 [project.scripts]
@@ -20,6 +21,8 @@ agriwebb-weather = "agriwebb.weather.cli:cli"
 agriwebb-setup = "agriwebb.cli.setup:cli"
 agriwebb-livestock = "agriwebb.data.livestock:cli"
 agriwebb-pasture = "agriwebb.pasture.cli:cli"
+agriwebb-mcp = "agriwebb.mcp_server:main"
+agriwebb-lambing = "agriwebb.analysis.lambing.cli:cli"
 
 [dependency-groups]
 dev = [
