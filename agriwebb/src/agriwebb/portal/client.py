@@ -7,10 +7,30 @@ browser session, which provides the auth context the API requires.
 import json
 from pathlib import Path
 
-# Default profile dir for persistent login
-DEFAULT_PROFILE_DIR = Path.home() / "Library" / "Caches" / "ms-playwright" / "mcp-chrome-profile"
+# Playwright MCP profile directory
+_PLAYWRIGHT_CACHE = Path.home() / "Library" / "Caches" / "ms-playwright"
 PORTAL_URL = "https://portal.agriwebb.com"
 LOOPBACK_BASE = "https://loopback-cdn.agriwebb.io/event-sourcing/api/EventSourcingService"
+
+
+def _find_profile_dir() -> Path:
+    """Auto-detect the Playwright MCP browser profile directory.
+
+    The MCP server creates profiles named mcp-chrome-* in the playwright cache.
+    Find the most recently modified one (the active session).
+    """
+    cache = _PLAYWRIGHT_CACHE
+    if not cache.exists():
+        return cache / "mcp-chrome-profile"  # fallback
+
+    candidates = sorted(
+        cache.glob("mcp-chrome-*"),
+        key=lambda p: (p / "Default" / "Local Storage").stat().st_mtime
+        if (p / "Default" / "Local Storage").exists()
+        else 0,
+        reverse=True,
+    )
+    return candidates[0] if candidates else cache / "mcp-chrome-profile"
 
 
 class PortalClient:
@@ -23,7 +43,7 @@ class PortalClient:
     """
 
     def __init__(self, profile_dir: Path | None = None, farm_id: str | None = None):
-        self.profile_dir = profile_dir or DEFAULT_PROFILE_DIR
+        self.profile_dir = profile_dir or _find_profile_dir()
         self.farm_id = farm_id  # loaded from settings if None
         self._playwright = None
         self._browser = None
