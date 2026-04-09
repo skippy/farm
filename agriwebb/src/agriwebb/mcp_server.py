@@ -27,11 +27,77 @@ server = FastMCP("agriwebb")
 # ---------------------------------------------------------------------------
 
 
+_STALE_HOURS = 24
+
+
 def _load():
     """Lazy-import and return the loader module."""
     from agriwebb.analysis.lambing import loader
 
     return loader
+
+
+def _cache_age_hours() -> float | None:
+    """Return the age of animals.json in hours, or None if missing."""
+    from agriwebb.core.config import get_cache_dir
+
+    path = get_cache_dir() / "animals.json"
+    if not path.exists():
+        return None
+    mtime = path.stat().st_mtime
+    age_seconds = datetime.now(UTC).timestamp() - mtime
+    return age_seconds / 3600
+
+
+def _staleness_warning() -> str | None:
+    """Return a warning string if the cache is stale, or None if fresh."""
+    hours = _cache_age_hours()
+    if hours is None:
+        return "WARNING: No animal cache found. Run: agriwebb-livestock cache"
+    if hours > _STALE_HOURS:
+        days = hours / 24
+        if days >= 2:
+            return f"NOTE: Animal data is {days:.0f} days old. Consider running: agriwebb-livestock cache --refresh"
+        return f"NOTE: Animal data is {hours:.0f} hours old. Consider running: agriwebb-livestock cache --refresh"
+    return None
+
+
+def _portal_cache_age_hours(record_type: str) -> float | None:
+    """Return the age of a portal cache file in hours, or None if missing."""
+    from agriwebb.core.config import get_cache_dir
+
+    path = get_cache_dir() / "portal" / f"{record_type}.json"
+    if not path.exists():
+        return None
+    mtime = path.stat().st_mtime
+    return (datetime.now(UTC).timestamp() - mtime) / 3600
+
+
+def _portal_staleness_warning() -> str | None:
+    """Return a warning if portal data is stale or missing."""
+    age = _portal_cache_age_hours("note-record")
+    if age is None:
+        return "NOTE: No portal data cached. Ask the agent to sync portal data via Playwright."
+    if age > _STALE_HOURS:
+        days = age / 24
+        if days >= 2:
+            return f"NOTE: Portal data is {days:.0f} days old. Ask the agent to refresh portal data."
+        return f"NOTE: Portal data is {age:.0f} hours old. Ask the agent to refresh portal data."
+    return None
+
+
+def _add_warnings(result: dict) -> dict:
+    """Add staleness warnings to a result dict if applicable."""
+    warnings = []
+    w = _staleness_warning()
+    if w:
+        warnings.append(w)
+    w = _portal_staleness_warning()
+    if w:
+        warnings.append(w)
+    if warnings:
+        result["_warnings"] = warnings
+    return result
 
 
 def _farm_data(season: int | None = None):
@@ -161,6 +227,7 @@ async def get_animal(identifier: str) -> str:
             "disposalMethod": fate.get("disposalMethod"),
         }
 
+    _add_warnings(result)
     return json.dumps(result, indent=2)
 
 
@@ -283,19 +350,18 @@ async def get_lambing_season(year: int | None = None) -> str:
     num_dams = len(dam_litters)
     lambing_rate = round(len(born_this_year) / num_dams, 2) if num_dams else 0
 
-    return json.dumps(
-        {
-            "year": year,
-            "totalBorn": len(born_this_year),
-            "liveBorn": len(live_born),
-            "losses": len(dead_born),
-            "sexBreakdown": dict(sex_counts),
-            "lambingRate": lambing_rate,
-            "damsLambed": num_dams,
-            "litterSizeDistribution": {str(k): v for k, v in sorted(litter_dist.items())},
-        },
-        indent=2,
-    )
+    result = {
+        "year": year,
+        "totalBorn": len(born_this_year),
+        "liveBorn": len(live_born),
+        "losses": len(dead_born),
+        "sexBreakdown": dict(sex_counts),
+        "lambingRate": lambing_rate,
+        "damsLambed": num_dams,
+        "litterSizeDistribution": {str(k): v for k, v in sorted(litter_dist.items())},
+    }
+    _add_warnings(result)
+    return json.dumps(result, indent=2)
 
 
 @server.tool()
@@ -329,16 +395,15 @@ async def get_losses(year: int | None = None) -> str:
         dam_breed = loader.get_breed(data.by_id[dam_id]) if dam_id and dam_id in data.by_id else "?"
         by_dam_breed[dam_breed] = by_dam_breed.get(dam_breed, 0) + 1
 
-    return json.dumps(
-        {
-            "year": year,
-            "totalLosses": len(dead_this_year),
-            "byCategory": by_category,
-            "bySire": by_sire,
-            "byDamBreed": by_dam_breed,
-        },
-        indent=2,
-    )
+    result = {
+        "year": year,
+        "totalLosses": len(dead_this_year),
+        "byCategory": by_category,
+        "bySire": by_sire,
+        "byDamBreed": by_dam_breed,
+    }
+    _add_warnings(result)
+    return json.dumps(result, indent=2)
 
 
 @server.tool()
