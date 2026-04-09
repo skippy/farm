@@ -39,6 +39,29 @@ def _farm_data(season: int | None = None):
     return _load().load_farm_data(season=season)
 
 
+def _load_portal_cache(record_type: str) -> list[dict]:
+    """Load portal-only records from .cache/portal/<type>.json if available."""
+    from agriwebb.core.config import get_cache_dir
+
+    path = get_cache_dir() / "portal" / f"{record_type}.json"
+    if not path.exists():
+        return []
+    import json as _json
+
+    with open(path) as f:
+        raw = _json.load(f)
+    # Handle double-JSON-encoded files (string wrapping)
+    if isinstance(raw, str):
+        raw = _json.loads(raw)
+    return raw.get("records", [])
+
+
+def _find_portal_records_for_animal(animal_id: str, record_type: str) -> list[dict]:
+    """Find portal records that reference a specific animal."""
+    records = _load_portal_cache(record_type)
+    return [r for r in records if animal_id in (r.get("animalIds") or [])]
+
+
 def _find_animal_in_cache(identifier: str, animals: list[dict], by_id: dict[str, dict]) -> dict | None:
     """Find an animal by name, VID, EID, or animalId (case-insensitive where appropriate)."""
     # Exact match on animalId
@@ -119,6 +142,25 @@ async def get_animal(identifier: str) -> str:
     mgmt = animal.get("managementGroup")
     if mgmt:
         result["managementGroup"] = mgmt.get("name")
+
+    # Enrich with portal data if available
+    aid = animal["animalId"]
+    notes = _find_portal_records_for_animal(aid, "note-record")
+    if notes:
+        result["notes"] = [
+            {"date": n.get("observationDate"), "note": n.get("note")}
+            for n in sorted(notes, key=lambda x: x.get("observationDate") or 0, reverse=True)
+        ]
+    death_recs = _find_portal_records_for_animal(aid, "death-record")
+    if death_recs:
+        d = death_recs[0]
+        fate = d.get("fate") or {}
+        result["deathDetail"] = {
+            "reason": fate.get("fateReason"),
+            "details": fate.get("fateDetails"),
+            "disposalMethod": fate.get("disposalMethod"),
+        }
+
     return json.dumps(result, indent=2)
 
 
@@ -341,10 +383,18 @@ async def get_sire_stats(sire: str | None = None) -> str:
             entry["byYear"][year_key]["losses"] += 1
 
     if sire is not None:
-        # Find the specific sire
+        # Find the specific sire — try exact match first, then case-insensitive
         found = _find_animal_in_cache(sire, data.animals, data.by_id)
         sire_name = loader.get_name(found) if found else sire
-        stats = sire_data.get(sire_name)
+        # Try both the resolved name and the original input (case may differ)
+        stats = sire_data.get(sire_name) or sire_data.get(sire.upper()) or sire_data.get(sire)
+        if not stats:
+            # Last resort: case-insensitive search through all keys
+            for key in sire_data:
+                if key.upper() == sire.upper():
+                    stats = sire_data[key]
+                    sire_name = key
+                    break
         if not stats:
             return json.dumps({"error": f"No offspring data found for sire '{sire}'"})
         loss_rate = round(stats["losses"] / stats["total"] * 100, 1) if stats["total"] else 0
@@ -490,6 +540,123 @@ async def get_breedable_ewes(breed: str | None = None) -> str:
         },
         indent=2,
     )
+
+
+# ---------------------------------------------------------------------------
+# Portal data tools (read from .cache/portal/)
+# ---------------------------------------------------------------------------
+
+
+@server.tool()
+async def get_notes(animal: str) -> str:
+    """Get clinical notes for an animal from AgriWebb portal data.
+
+    Returns notes sorted by date (most recent first).
+    Requires portal data to be cached — run portal sync first.
+    """
+    loader = _load()
+    data = _farm_data()
+    found = _find_animal_in_cache(animal, data.animals, data.by_id)
+    if not found:
+        return json.dumps({"error": f"No animal found matching '{animal}'"})
+
+    notes = _find_portal_records_for_animal(found["animalId"], "note-record")
+    if not notes:
+        return json.dumps({
+            "animal": loader.get_name(found),
+            "notes": [],
+            "message": "No notes found. Portal data may need refreshing.",
+        })
+
+    return json.dumps(
+        {
+            "animal": loader.get_name(found),
+            "count": len(notes),
+            "notes": [
+                {"date": n.get("observationDate"), "note": n.get("note")}
+                for n in sorted(notes, key=lambda x: x.get("observationDate") or 0, reverse=True)
+            ],
+        },
+        indent=2,
+    )
+
+
+@server.tool()
+async def get_death_details(animal: str) -> str:
+    """Get death/loss details for an animal from AgriWebb portal data.
+
+    Returns fateReason, fateDetails (clinical notes), and disposal info.
+    Requires portal data to be cached — run portal sync first.
+    """
+    loader = _load()
+    data = _farm_data()
+    found = _find_animal_in_cache(animal, data.animals, data.by_id)
+    if not found:
+        return json.dumps({"error": f"No animal found matching '{animal}'"})
+
+    deaths = _find_portal_records_for_animal(found["animalId"], "death-record")
+    if not deaths:
+        fate = (found.get("state") or {}).get("fate")
+        if fate == "Dead":
+            return json.dumps({
+                "animal": loader.get_name(found),
+                "fate": "Dead",
+                "message": "No portal death record found. Portal data may need refreshing.",
+            })
+        return json.dumps({
+            "animal": loader.get_name(found),
+            "fate": fate,
+            "message": "This animal is not recorded as dead.",
+        })
+
+    d = deaths[0]
+    fate = d.get("fate") or {}
+    return json.dumps(
+        {
+            "animal": loader.get_name(found),
+            "fateReason": fate.get("fateReason"),
+            "fateDetails": fate.get("fateDetails"),
+            "disposalMethod": fate.get("disposalMethod"),
+            "disposalDate": fate.get("disposalDate"),
+            "observationDate": d.get("observationDate"),
+        },
+        indent=2,
+    )
+
+
+@server.tool()
+async def get_ai_records() -> str:
+    """Get all artificial insemination records from portal data.
+
+    Returns donor sire details, ewe IDs, and dates.
+    """
+    records = _load_portal_cache("ai-record")
+    if not records:
+        return json.dumps({"records": [], "message": "No AI records cached. Run portal sync first."})
+
+    loader = _load()
+    data = _farm_data()
+
+    results = []
+    for rec in records:
+        straw = rec.get("straw") or {}
+        sire_details = straw.get("sireDetails") or {}
+        ewe_ids = list(rec.get("animalIds") or [])
+        ewe_names = []
+        for eid in ewe_ids:
+            a = data.by_id.get(eid)
+            if a:
+                ewe_names.append(loader.get_name(a))
+
+        results.append({
+            "date": rec.get("observationDate"),
+            "sireName": sire_details.get("name"),
+            "sireBreed": sire_details.get("breed"),
+            "semenType": straw.get("semenType"),
+            "ewes": ewe_names,
+        })
+
+    return json.dumps({"count": len(results), "records": results}, indent=2)
 
 
 # ---------------------------------------------------------------------------
