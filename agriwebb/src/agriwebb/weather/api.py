@@ -155,11 +155,11 @@ async def get_rainfalls(
             "sensorId": sensor,
         }
         if start_date:
-            var_defs.append("$startTime: Timestamp!")
+            var_defs.append("$startTime: Float!")
             time_filter_parts.append("_gte: $startTime")
             variables["startTime"] = to_timestamp_ms(start_date)
         if end_date:
-            var_defs.append("$endTime: Timestamp!")
+            var_defs.append("$endTime: Float!")
             time_filter_parts.append("_lte: $endTime")
             variables["endTime"] = to_timestamp_ms(end_date)
         time_filter = f", time: {{ {', '.join(time_filter_parts)} }}" if time_filter_parts else ""
