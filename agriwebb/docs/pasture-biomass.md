@@ -313,56 +313,67 @@ seasons and false negatives on dry paddocks in wet seasons.
 
 ---
 
-## Historical backtest findings (PR #28 baseline)
+## Historical backtest findings
 
 Running `agriwebb-pasture backtest-gate` against `.cache/ndvi_historical.json`
-(8 years × 35 paddocks × ~97 months = 3,098 observations) produced the
-following baseline with the gate as shipped:
+(8 years × 35 paddocks × ~97 months = 3,098 observations). Two baselines
+below, showing the effect of the three tuning fixes in a follow-up commit.
+
+### Initial baseline (pre-tuning)
 
 | Layer | Count | % | Notes |
 |---|---|---|---|
 | Passed | 1,805 | 58.3% | |
 | L1 rejected (raw sanity) | 243 | 7.8% | Mostly cloud-contaminated winter composites |
-| L2 rejected (growth delta) | 466 | 15.0% | **Probably too strict — see below** |
-| L3 smoothed (temporal filter) | 584 | 18.8% | **Over-corrects seasonal transitions — see below** |
+| L2 rejected (growth delta) | 466 | 15.0% | Too strict — hardcoded 30-day window, farm-wide constant |
+| L3 smoothed (temporal filter) | 584 | 18.8% | Over-correcting seasonal transitions |
+
+### Tuned baseline (after Fixes #1, #2, #3)
+
+| Layer | Count | % | Change | Notes |
+|---|---|---|---|---|
+| Passed | 2,922 | **94.3%** | +1,117 | |
+| L1 rejected | 145 | 4.7% | -98 | Fixed OKF-NW small-paddock failure; genuine garbage remains |
+| L2 rejected | 31 | 1.0% | -435 | Real anomalies only (Jan 2023 farm-wide event, Mar 2024 spring flush) |
+| L3 smoothed | 0 | 0.0% | -584 | L3 opts out on monthly data (too sparse within 90-day span) |
 
 ### What works
 - **Opalco Dec 2024 is caught.** NDVI=-0.027, stddev=4.298 rejected at L1
   on stddev — the motivating incident is handled.
 - **A macro cloud event in Dec 2024** shows up across ~15 paddocks with
   wildly negative NDVI means and huge stddevs. All caught at L1.
-- Winter/Jan observations have ~22% L1 rejection rate, which matches the
-  known PNW winter cloud cover reality — the gate reflects the truth.
+- **The Jan 2023 anomaly** (13 paddocks on the same day showing growth
+  exceeding weather-model max) surfaces as a cross-paddock L2 pattern —
+  a clear signal worth investigating offline. Whether it's a real warm
+  spell or an HLS re-processing artifact, the gate correctly flags it.
+- Winter observations have a ~15% L1 rejection rate, matching the known
+  PNW winter cloud cover reality — the gate reflects the truth.
 
-### Known tuning issues the backtest surfaced
+### Fixes applied (see commit history)
 
-1. **OKF-NW is too small (0.22 ha = ~6 HLS pixels).** Every observation
-   fails the `MIN_PIXEL_COUNT = 10` threshold. Options: (a) special-case
-   small paddocks to a lower threshold, (b) exclude OKF-NW from SDM sync,
-   (c) use 10m S2 data for small paddocks instead of 30m HLS. **Tall** (3.36 ha)
-   has a similar issue in some months, suggesting the HLS 30m scale is the
-   real constraint.
+1. **Area-aware pixel threshold** (`validate.py:_min_pixels_for_area`).
+   Small paddocks (OKF-NW is 0.22 ha ≈ 2 HLS pixels) now use a threshold
+   scaled to expected pixel count: `max(3, int(expected × 0.2))`. A 5-ha
+   paddock still needs ~11 pixels; a 0.22-ha paddock needs 3. Callers
+   pass `area_ha` and `scale_m` so the behavior is explicit.
 
-2. **Layer 2 is too strict for high-productivity paddocks.** FBS shows 7
-   winter L2 rejections for growth deltas of 700–900 kg/ha/30d against a
-   cap of 675 kg/ha/30d (winter max 15 kg/ha/day × 30 × 1.5 headroom).
-   These are probably *real* winter growth on peat or high-OM soil that
-   exceeds the farm-wide seasonal constant. Fix: replace the `SEASONAL_MAX_GROWTH`
-   constant with a per-paddock potential growth computed from
-   `calculate_farm_growth` over the same window (now possible since Part 4
-   landed per-paddock weather).
+2. **Per-paddock L2 ceiling** (`validate.py:validate_growth_delta`).
+   The farm-wide `SEASONAL_MAX_GROWTH` constant is now multiplied by each
+   paddock's `soil_quality_factor` (drainage + organic matter). Peat soils
+   and high-OM paddocks (~1.15×) get a higher ceiling; poorly drained
+   soils (~0.85×) get a tighter one. `validate_growth_delta` also gained
+   a new `weather_max_total_kg_ha` parameter for callers who want to
+   compute the full per-window potential directly via
+   `calculate_farm_growth` (e.g., for daily sync). The backtest uses
+   the simpler soil-factor path since it replays monthly data.
 
-3. **Layer 3 over-corrects seasonal transitions.** Multiple OKF-* paddocks
-   show legitimate Dec/Jan NDVI drops being "smoothed up" toward summer
-   baseline values. The delta-based filter handles *linear* trends but
-   fails on seasonal sign changes. Options:
-   - Require history to be within the same season
-   - Detrend via a simple harmonic before filtering
-   - Narrow the history window (currently 6 months → could be 3)
-   - Skip L3 entirely for Dec/Jan transitions
-4. **The 18.8% L3 smoothing rate is suspicious.** If the filter is legitimately
-   correcting spikes, ~5% would be expected. 18.8% suggests systematic
-   over-correction, most likely from issue #3 above.
+3. **Time-bounded L3 history** (`validate.py:filter_history_by_span`).
+   Temporal filter callers pre-filter history to observations within
+   `TEMPORAL_MAX_SPAN_DAYS = 90` of the current observation. For monthly
+   data this typically leaves ≤3 points (below `TEMPORAL_MIN_HISTORY = 4`)
+   so the filter opts out — no more smoothing legitimate seasonal
+   transitions. For weekly or daily sync it still fires normally with
+   ~12 points in the window.
 
 ### How to re-run
 
@@ -394,9 +405,12 @@ change to see the effect.
 | `NDVI_MIN_VALID` | -0.1 | Below = water/cloud/shadow | `validate.py` |
 | `NDVI_MAX_STDDEV` | 0.25 | Above = unreliable composite | `validate.py` |
 | `MIN_CLOUD_FREE_PCT` | 20.0 | Below = bad composite | `validate.py` |
-| `MIN_PIXEL_COUNT` | 10 | Below = paddock too small/cloudy | `validate.py` |
+| `MIN_PIXEL_COUNT_ABSOLUTE` | 3 | Hard floor for very small paddocks | `validate.py` |
+| `MIN_PIXEL_COUNT_DEFAULT` | 10 | Used when paddock area unknown | `validate.py` |
+| `MIN_PIXEL_FRACTION` | 0.2 | Require 20% of expected pixels when area known | `validate.py` |
 | `GROWTH_HEADROOM` | 1.5 | Layer-2 tolerance above weather max | `validate.py` |
 | `TEMPORAL_OUTLIER_SIGMA` | 3.0 | Layer-3 spike threshold | `validate.py` |
+| `TEMPORAL_MAX_SPAN_DAYS` | 90 | Layer-3 history span cutoff (seasonal safety) | `validate.py` |
 | `NDRE_SOIL` | 0.05 | Bare-soil NDRE baseline | `biomass.py` |
 | `NDRE_MAX` | 0.85 | Asymptotic max NDRE | `biomass.py` |
 | `LAI_K` | 0.5 | Beer's law random-leaf canopy | `biomass.py` |

@@ -37,6 +37,7 @@ from agriwebb.pasture.growth import (
 from agriwebb.pasture.validate import (
     append_paddock_history,
     apply_temporal_filter,
+    filter_history_by_span,
     load_paddock_history,
     validate_growth_delta,
     validate_ndvi_observation,
@@ -677,6 +678,32 @@ async def sync_sdm(args: argparse.Namespace) -> None:
     print(f"Gate mode: {'strict (flagged deltas rejected)' if strict else 'warn (flagged deltas kept)'}")
     print()
 
+    # -------- Pre-compute per-paddock weather ceilings (Fix #2) --------
+    # For each paddock, compute the *theoretical* seasonal ceiling adjusted
+    # for that paddock's soil quality (drainage + organic matter). This gives
+    # productive soils (peat, high-OM) a higher L2 ceiling so legitimate
+    # bursts of growth aren't falsely flagged, while poor soils get a
+    # tighter ceiling. We deliberately do NOT gate by actual weather
+    # conditions here — we want the upper bound, not the expected value.
+    paddock_daily_max: dict[str, float] = {}
+    season_key = get_season(end_date).value
+    farm_wide_weather_max = SEASONAL_MAX_GROWTH[season_key]
+    try:
+        from agriwebb.pasture.growth import soil_quality_factor
+
+        paddock_soils = load_paddock_soils()
+        for pname, pdata in paddock_soils.items():
+            soil = pdata.get("soil", {})
+            drainage = soil.get("drainage")
+            om_raw = soil.get("organic_matter_pct")
+            om_pct = float(om_raw) if om_raw else None
+            factor = soil_quality_factor(drainage=drainage, organic_matter_pct=om_pct)
+            paddock_daily_max[pname] = farm_wide_weather_max * factor
+        print(f"Computed per-paddock soil-adjusted ceilings for {len(paddock_daily_max)} paddocks")
+    except Exception as e:
+        print(f"Warning: couldn't compute per-paddock ceilings, falling back to farm-wide: {e}")
+    print()
+
     print(f"Fetching {index} and calculating SDM...")
     print()
     print(f"{'Paddock':<30} {index:>8} {'SDM (kg/ha)':>12}  Gate")
@@ -686,8 +713,6 @@ async def sync_sdm(args: argparse.Namespace) -> None:
     rejected_count = 0
     filtered_count = 0
     current_month = end_date.month
-    season_key = get_season(end_date).value
-    weather_max = SEASONAL_MAX_GROWTH[season_key]
 
     for p in paddocks:
         pid = p["id"]
@@ -720,11 +745,16 @@ async def sync_sdm(args: argparse.Namespace) -> None:
             continue
 
         # -------- Layer 1: raw index sanity --------
+        # Pass paddock area so the pixel count threshold scales to paddock
+        # size (3 floor for tiny paddocks, 20% of expected otherwise).
+        scale_m = 20 if index == "NDRE" else 30
         raw = validate_ndvi_observation(
             ndvi_mean=result.get("ndvi_mean"),
             ndvi_stddev=result.get("ndvi_stddev"),
             cloud_free_pct=result.get("cloud_free_pct") or 0.0,
             pixel_count=result.get("pixel_count") or 0,
+            area_ha=p.get("totalArea"),
+            scale_m=scale_m,
         )
         if not raw.valid:
             rejected_count += 1
@@ -736,18 +766,23 @@ async def sync_sdm(args: argparse.Namespace) -> None:
         sdm, _ = ndvi_to_standing_dry_matter(ndvi, month=current_month, index=index)
 
         # -------- Layer 2: growth-delta plausibility --------
-        history = load_paddock_history(pid)
+        full_history = load_paddock_history(pid)
+        # Only consider recent history (drops stale entries that span seasons).
+        recent_history = filter_history_by_span(full_history, end_date)
         gate_notes = []
-        if history:
-            last = history[-1]
+        if recent_history:
+            last = recent_history[-1]
             last_date = date.fromisoformat(last["date"]) if isinstance(last["date"], str) else last["date"]
             days_since = (end_date - last_date).days
             if days_since > 0:
+                # Per-paddock daily rate if we were able to compute it;
+                # otherwise fall back to the farm-wide seasonal constant.
+                paddock_max = paddock_daily_max.get(name, farm_wide_weather_max)
                 delta_check = validate_growth_delta(
                     sdm_curr=sdm,
                     sdm_prev=last["sdm"],
                     days=days_since,
-                    weather_max_growth_kg_ha_day=weather_max,
+                    weather_max_growth_kg_ha_day=paddock_max,
                 )
                 if not delta_check.valid:
                     gate_notes.append(f"delta: {delta_check.reason}")
@@ -757,7 +792,7 @@ async def sync_sdm(args: argparse.Namespace) -> None:
                         continue
 
         # -------- Layer 3: temporal smoothing --------
-        sdm_history = [h["sdm"] for h in history]
+        sdm_history = [h["sdm"] for h in recent_history]
         sdm_filtered, replaced = apply_temporal_filter(sdm_history, sdm)
         if replaced:
             filtered_count += 1

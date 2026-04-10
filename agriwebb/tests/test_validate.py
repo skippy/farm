@@ -7,6 +7,7 @@ Covers the three layers in pasture/validate.py:
 """
 
 import json
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -14,13 +15,17 @@ import pytest
 from agriwebb.pasture.validate import (
     GROWTH_HEADROOM,
     MIN_CLOUD_FREE_PCT,
-    MIN_PIXEL_COUNT,
+    MIN_PIXEL_COUNT_ABSOLUTE,
+    MIN_PIXEL_COUNT_DEFAULT,
     NDVI_MAX_STDDEV,
     NDVI_MAX_VALID,
     NDVI_MIN_VALID,
     TEMPORAL_HISTORY_KEEP,
+    TEMPORAL_MAX_SPAN_DAYS,
+    _min_pixels_for_area,
     append_paddock_history,
     apply_temporal_filter,
+    filter_history_by_span,
     get_ndvi_history_dir,
     load_paddock_history,
     validate_growth_delta,
@@ -81,7 +86,7 @@ class TestValidateNdviObservation:
     def test_low_pixel_count_fails(self):
         result = validate_ndvi_observation(
             ndvi_mean=0.5,
-            pixel_count=MIN_PIXEL_COUNT - 1,
+            pixel_count=MIN_PIXEL_COUNT_DEFAULT - 1,
         )
         assert not result.valid
         assert "pixels" in result.reason
@@ -109,6 +114,90 @@ class TestValidateNdviObservation:
         # When stddev/cloud/pixel info isn't available, defaults shouldn't fail
         result = validate_ndvi_observation(ndvi_mean=0.4)
         assert result.valid
+
+
+class TestAreaAwarePixelThreshold:
+    """Per-paddock pixel count scaling (Fix #1 from PR #28 backtest)."""
+
+    def test_tiny_paddock_passes_with_few_pixels(self):
+        """OKF-NW scenario: 0.22 ha = ~2 expected HLS pixels.
+
+        Previously failed MIN_PIXEL_COUNT=10 every observation; now the
+        threshold should scale to the paddock size.
+        """
+        result = validate_ndvi_observation(
+            ndvi_mean=0.4,
+            ndvi_stddev=0.05,
+            cloud_free_pct=80,
+            pixel_count=6,  # OKF-NW's actual observed count
+            area_ha=0.22,
+            scale_m=30,
+        )
+        assert result.valid
+
+    def test_tiny_paddock_still_needs_floor(self):
+        """Even for tiny paddocks we demand at least MIN_PIXEL_COUNT_ABSOLUTE."""
+        result = validate_ndvi_observation(
+            ndvi_mean=0.4,
+            ndvi_stddev=0.05,
+            cloud_free_pct=80,
+            pixel_count=MIN_PIXEL_COUNT_ABSOLUTE - 1,
+            area_ha=0.22,
+            scale_m=30,
+        )
+        assert not result.valid
+
+    def test_normal_paddock_uses_scaled_threshold(self):
+        """A 5-ha paddock at 30m has ~55 expected pixels. 20% = 11.
+
+        So anything below 11 should fail, but 20 should pass.
+        """
+        area = 5.0
+        scale = 30
+        min_req = _min_pixels_for_area(area, scale)
+        assert min_req >= 10  # Scales up above the default floor
+
+        too_few = validate_ndvi_observation(
+            ndvi_mean=0.4,
+            cloud_free_pct=80,
+            pixel_count=min_req - 1,
+            area_ha=area,
+            scale_m=scale,
+        )
+        assert not too_few.valid
+
+        enough = validate_ndvi_observation(
+            ndvi_mean=0.4,
+            cloud_free_pct=80,
+            pixel_count=min_req,
+            area_ha=area,
+            scale_m=scale,
+        )
+        assert enough.valid
+
+    def test_no_area_falls_back_to_default(self):
+        """Without area info, use the fixed MIN_PIXEL_COUNT_DEFAULT."""
+        result = validate_ndvi_observation(
+            ndvi_mean=0.4,
+            cloud_free_pct=80,
+            pixel_count=MIN_PIXEL_COUNT_DEFAULT - 1,
+        )
+        assert not result.valid
+
+    def test_s2_finer_scale_gives_more_pixels(self):
+        """At S2 10m, a tiny paddock has many more expected pixels."""
+        # 0.22 ha at 10m = 22 pixels expected → 20% = 4 min
+        # At 30m = 2 pixels expected → 3 min (floor)
+        req_10m = _min_pixels_for_area(0.22, 10)
+        req_30m = _min_pixels_for_area(0.22, 30)
+        assert req_10m > req_30m
+
+    def test_min_pixels_helper_handles_none(self):
+        assert _min_pixels_for_area(None, 30) == MIN_PIXEL_COUNT_DEFAULT
+
+    def test_min_pixels_helper_honors_floor(self):
+        """Very small area at coarse scale hits the absolute floor."""
+        assert _min_pixels_for_area(0.01, 30) == MIN_PIXEL_COUNT_ABSOLUTE
 
 
 # =============================================================================
@@ -212,6 +301,48 @@ class TestValidateGrowthDelta:
         )
         assert result_default.valid == result_explicit.valid
 
+    def test_missing_both_ceilings_fails(self):
+        """Caller must supply at least one of the two ceiling forms."""
+        result = validate_growth_delta(
+            sdm_curr=2000,
+            sdm_prev=1500,
+            days=10,
+        )
+        assert not result.valid
+        assert "weather ceiling" in result.reason
+
+    def test_total_kg_ha_path(self):
+        """Fix #2: per-paddock total ceiling overrides the per-day form."""
+        # Total of 400 kg/ha in 14 days * 1.5 headroom = 600 kg allowed
+        result = validate_growth_delta(
+            sdm_curr=2500,
+            sdm_prev=2000,
+            days=14,
+            weather_max_total_kg_ha=400,  # tight total
+        )
+        # Delta = 500; ceiling = 400 * 1.5 = 600 → passes
+        assert result.valid
+
+        result_tight = validate_growth_delta(
+            sdm_curr=2700,
+            sdm_prev=2000,
+            days=14,
+            weather_max_total_kg_ha=400,
+        )
+        # Delta = 700; ceiling = 600 → fails
+        assert not result_tight.valid
+
+    def test_total_ceiling_takes_precedence_over_per_day(self):
+        """If both are supplied, the total form wins."""
+        result = validate_growth_delta(
+            sdm_curr=2500,
+            sdm_prev=2000,
+            days=10,
+            weather_max_growth_kg_ha_day=100,  # per-day → 100*10*1.5 = 1500 ceiling (pass)
+            weather_max_total_kg_ha=200,  # total → 200*1.5 = 300 ceiling (fail)
+        )
+        assert not result.valid
+
 
 # =============================================================================
 # Layer 3: apply_temporal_filter
@@ -275,6 +406,86 @@ class TestApplyTemporalFilter:
         history = [2000.0, 2100.0, 1950.0, 2050.0, 2020.0]
         value, replaced = apply_temporal_filter(history, 50.0)
         assert replaced
+
+
+class TestFilterHistoryBySpan:
+    """Fix #3: drop stale history so the temporal filter doesn't straddle seasons."""
+
+    def test_all_within_span_kept(self):
+        history = [
+            {"date": "2026-03-15", "sdm": 1500},
+            {"date": "2026-03-22", "sdm": 1600},
+            {"date": "2026-03-29", "sdm": 1700},
+        ]
+        result = filter_history_by_span(history, date(2026, 4, 5))
+        assert len(result) == 3
+
+    def test_stale_entries_dropped(self):
+        # Default span is 90 days
+        history = [
+            {"date": "2025-11-01", "sdm": 1000},  # >90 days before Apr 5
+            {"date": "2026-01-15", "sdm": 1200},  # ~80 days before — keep
+            {"date": "2026-03-15", "sdm": 1500},
+        ]
+        result = filter_history_by_span(history, date(2026, 4, 5))
+        dates = [r["date"] for r in result]
+        assert "2025-11-01" not in dates
+        assert "2026-01-15" in dates
+        assert "2026-03-15" in dates
+
+    def test_monthly_data_typically_underfills(self):
+        """Monthly observations rarely have 4+ within a 90-day span.
+
+        This is the key insight of Fix #3: for monthly data, the filter
+        effectively opts out and stops over-correcting seasonal transitions.
+        """
+        # 3 monthly observations spanning ~90 days
+        history = [
+            {"date": "2026-01-01", "sdm": 1200},
+            {"date": "2026-02-01", "sdm": 1300},
+            {"date": "2026-03-01", "sdm": 1400},
+        ]
+        result = filter_history_by_span(history, date(2026, 4, 1))
+        # Only 3 kept (Jan is ~90d before April) → below TEMPORAL_MIN_HISTORY=4
+        assert len(result) <= 3
+
+    def test_weekly_data_retains_enough(self):
+        """Weekly observations fit ~12-13 in a 90-day span — enough for L3."""
+        history = [{"date": f"2026-0{1 + (i // 4)}-{(i % 4) * 7 + 1:02d}", "sdm": 1000 + i * 20} for i in range(12)]
+        result = filter_history_by_span(history, date(2026, 4, 1))
+        assert len(result) >= 4  # Enough for the temporal filter to fire
+
+    def test_custom_span(self):
+        history = [
+            {"date": "2026-03-01", "sdm": 1000},
+            {"date": "2026-03-20", "sdm": 1100},
+            {"date": "2026-04-01", "sdm": 1200},
+        ]
+        result = filter_history_by_span(history, date(2026, 4, 5), max_span_days=10)
+        assert len(result) == 1
+        assert result[0]["date"] == "2026-04-01"
+
+    def test_accepts_date_object(self):
+        history = [
+            {"date": date(2026, 3, 15), "sdm": 1500},
+            {"date": date(2026, 3, 22), "sdm": 1600},
+        ]
+        result = filter_history_by_span(history, date(2026, 4, 5))
+        assert len(result) == 2
+
+    def test_skips_malformed_dates(self):
+        history = [
+            {"date": "not-a-date", "sdm": 999},
+            {"date": "2026-03-15", "sdm": 1500},
+            {"sdm": 777},  # Missing date entirely
+        ]
+        result = filter_history_by_span(history, date(2026, 4, 5))
+        assert len(result) == 1
+        assert result[0]["sdm"] == 1500
+
+    def test_default_span_constant(self):
+        """Sanity: the default span matches TEMPORAL_MAX_SPAN_DAYS."""
+        assert TEMPORAL_MAX_SPAN_DAYS == 90
 
 
 # =============================================================================

@@ -19,9 +19,14 @@ from datetime import date
 
 from agriwebb.core import get_cache_dir
 from agriwebb.pasture.biomass import ndvi_to_standing_dry_matter
-from agriwebb.pasture.growth import SEASONAL_MAX_GROWTH, get_season
+from agriwebb.pasture.growth import (
+    SEASONAL_MAX_GROWTH,
+    get_season,
+    soil_quality_factor,
+)
 from agriwebb.pasture.validate import (
     apply_temporal_filter,
+    filter_history_by_span,
     validate_growth_delta,
     validate_ndvi_observation,
 )
@@ -34,6 +39,25 @@ def load_ndvi_history() -> dict:
         return None
     with open(path) as f:
         return json.load(f)
+
+
+def _paddock_soil_factor(paddock_soil: dict | None) -> float:
+    """Compute the soil quality factor for a paddock (0.7 to 1.2).
+
+    Drainage × organic matter bonus — see pasture/growth.py:soil_quality_factor.
+    Used to adjust the farm-wide seasonal max growth into a paddock-specific
+    theoretical ceiling.
+    """
+    if not paddock_soil:
+        return 1.0
+    soil = paddock_soil.get("soil", {})
+    drainage = soil.get("drainage")
+    om_raw = soil.get("organic_matter_pct")
+    try:
+        om_pct = float(om_raw) if om_raw else None
+    except (ValueError, TypeError):
+        om_pct = None
+    return soil_quality_factor(drainage=drainage, organic_matter_pct=om_pct)
 
 
 def _parse_entry_date(entry: dict) -> date:
@@ -49,6 +73,8 @@ def backtest_paddock(
     paddock_name: str,
     history: list[dict],
     months_filter: set[int] | None = None,
+    area_ha: float | None = None,
+    paddock_soil: dict | None = None,
 ) -> list[dict]:
     """Replay a single paddock's history through the gate.
 
@@ -59,12 +85,22 @@ def backtest_paddock(
             cloud_free_pct, pixel_count, date.
         months_filter: If provided, only replay entries whose month is in
             this set (e.g. ``{12, 1}`` for December and January).
+        area_ha: Paddock area in hectares, used to scale the L1 pixel
+            count threshold for small paddocks.
+        paddock_soil: Soil dict from ``paddock_soils.json`` (Fix #2). When
+            provided, L2 uses the seasonal max × soil-quality factor as
+            the per-paddock ceiling (productive peat/high-OM soils get a
+            higher ceiling than poorly drained ones).
 
     Returns:
         List of per-observation result dicts.
     """
     results = []
-    accepted_sdm_history: list[float] = []  # For the temporal filter
+    # Compute the paddock's soil-adjusted ceiling once
+    soil_factor = _paddock_soil_factor(paddock_soil)
+    # Track full accepted-observation history as dicts so we can apply the
+    # date-span filter before invoking the temporal filter.
+    accepted_history: list[dict] = []
 
     for entry in history:
         if entry.get("ndvi_mean") is None and entry.get("pixel_count", 0) == 0:
@@ -92,6 +128,8 @@ def backtest_paddock(
             ndvi_stddev=entry.get("ndvi_stddev"),
             cloud_free_pct=entry.get("cloud_free_pct", 0) or 0,
             pixel_count=entry.get("pixel_count", 0) or 0,
+            area_ha=area_ha,
+            scale_m=30,  # Historical cache was fetched at HLS 30m
         )
         if not layer1.valid:
             record["verdict"] = "rejected_l1"
@@ -103,31 +141,38 @@ def backtest_paddock(
         sdm, _model = ndvi_to_standing_dry_matter(ndvi, month=entry_date.month)
         record["sdm"] = sdm
 
+        # Span-filter accepted history to avoid straddling seasons (Fix #3).
+        recent = filter_history_by_span(accepted_history, entry_date)
+
         # -------- Layer 2: growth-delta plausibility --------
-        if accepted_sdm_history:
-            prev_sdm = accepted_sdm_history[-1]
-            # Previous entry was accepted — find its date for day-delta
-            # (Approximation: use 30 days since history is monthly)
-            days_since = 30
+        if recent:
+            prev = recent[-1]
+            prev_sdm = prev["sdm"]
+            prev_date = date.fromisoformat(prev["date"])
+            days_since = (entry_date - prev_date).days or 1
+
+            # Fix #2: farm-wide seasonal constant × per-paddock soil factor.
+            # Productive soils (peat, high-OM) get a higher ceiling.
             season = get_season(entry_date).value
-            weather_max = SEASONAL_MAX_GROWTH[season]
+            weather_max = SEASONAL_MAX_GROWTH[season] * soil_factor
+
             layer2 = validate_growth_delta(
                 sdm_curr=sdm,
                 sdm_prev=prev_sdm,
                 days=days_since,
                 weather_max_growth_kg_ha_day=weather_max,
             )
+
             if not layer2.valid:
                 record["verdict"] = "rejected_l2"
                 record["reason"] = layer2.reason
                 record["sdm_prev"] = prev_sdm
                 results.append(record)
-                # In strict mode we'd drop; in warn mode we'd still record
-                # to history. For backtest clarity we skip adding to history.
                 continue
 
         # -------- Layer 3: temporal filter --------
-        filtered, replaced = apply_temporal_filter(accepted_sdm_history, sdm)
+        sdm_values = [h["sdm"] for h in recent]
+        filtered, replaced = apply_temporal_filter(sdm_values, sdm)
         if replaced:
             record["verdict"] = "smoothed_l3"
             record["reason"] = f"smoothed {sdm:.0f}→{filtered:.0f}"
@@ -138,10 +183,12 @@ def backtest_paddock(
             record["verdict"] = "passed"
             record["reason"] = ""
 
-        accepted_sdm_history.append(sdm)
-        # Keep rolling window bounded
-        if len(accepted_sdm_history) > 6:
-            accepted_sdm_history = accepted_sdm_history[-6:]
+        accepted_history.append({"date": entry_date.isoformat(), "sdm": sdm})
+        # Keep the in-memory accepted history bounded so long paddock runs
+        # don't grow unbounded. 12 months is plenty — the span filter will
+        # trim to ~3 months for the actual filter input.
+        if len(accepted_history) > 12:
+            accepted_history = accepted_history[-12:]
 
         results.append(record)
 
@@ -157,6 +204,18 @@ def run_backtest(
     if cache is None:
         raise FileNotFoundError("No .cache/ndvi_historical.json found. Run 'agriwebb-pasture cache' first.")
 
+    # Load per-paddock soils for the per-paddock L2 ceiling (Fix #2).
+    # Silently falls back to the farm-wide seasonal constant if missing.
+    soils_by_name: dict[str, dict] = {}
+    try:
+        from agriwebb.pasture.growth import load_paddock_soils
+
+        soils_raw = load_paddock_soils(auto_fetch=False)
+        for pname, pdata in soils_raw.items():
+            soils_by_name[pname] = pdata
+    except Exception:
+        pass
+
     all_results: list[dict] = []
     per_paddock_counts: dict[str, dict[str, int]] = defaultdict(
         lambda: {"passed": 0, "rejected_l1": 0, "rejected_l2": 0, "smoothed_l3": 0}
@@ -171,7 +230,15 @@ def run_backtest(
         if not history:
             continue
 
-        results = backtest_paddock(pid, name, history, months_filter=months_filter)
+        area_ha = paddock.get("area_ha")
+        results = backtest_paddock(
+            pid,
+            name,
+            history,
+            months_filter=months_filter,
+            area_ha=area_ha,
+            paddock_soil=soils_by_name.get(name),
+        )
         all_results.extend(results)
         for r in results:
             per_paddock_counts[name][r["verdict"]] += 1

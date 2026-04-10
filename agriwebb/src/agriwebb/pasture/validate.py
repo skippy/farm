@@ -26,6 +26,7 @@ produced wild SDM swings of ±1500 kg/ha between consecutive observations.
 
 import json
 from dataclasses import dataclass, field
+from datetime import date, timedelta
 from pathlib import Path
 from statistics import median, stdev
 
@@ -38,7 +39,9 @@ NDVI_MIN_VALID = -0.1  # Below this is water/cloud/shadow
 NDVI_MAX_VALID = 1.0
 NDVI_MAX_STDDEV = 0.25  # Spatial heterogeneity above this = unreliable
 MIN_CLOUD_FREE_PCT = 20.0  # Below this = composite is mostly cloud
-MIN_PIXEL_COUNT = 10  # Below this = paddock too small or too cloudy
+MIN_PIXEL_COUNT_ABSOLUTE = 3  # Hard floor: fewer than 3 pixels is unusable
+MIN_PIXEL_COUNT_DEFAULT = 10  # Used when paddock area is not provided
+MIN_PIXEL_FRACTION = 0.2  # With known area, require at least 20% of expected pixels
 
 # Growth-delta gate
 GROWTH_HEADROOM = 1.5  # Allow NDVI delta up to 1.5x weather model potential
@@ -48,6 +51,7 @@ TEMPORAL_HISTORY_LIMIT = 6  # Use last N observations for the rolling stats
 TEMPORAL_MIN_HISTORY = 4  # Need at least N points (3 deltas) to filter
 TEMPORAL_OUTLIER_SIGMA = 3.0  # > Nσ from expected delta = replace
 TEMPORAL_HISTORY_KEEP = 30  # Keep at most N observations on disk per paddock
+TEMPORAL_MAX_SPAN_DAYS = 90  # Only consider history within this many days of the new observation
 
 
 # =============================================================================
@@ -72,11 +76,36 @@ class ValidationResult:
 # =============================================================================
 
 
+def _min_pixels_for_area(area_ha: float | None, scale_m: int) -> int:
+    """Compute the effective minimum pixel count for a paddock.
+
+    Small paddocks physically cannot produce many pixels at coarse
+    satellite resolution. A 0.22 ha paddock at 30m HLS has only ~2 pixels,
+    so a fixed threshold of 10 would reject every observation regardless
+    of quality. We scale to expected pixel yield instead.
+
+    Args:
+        area_ha: Paddock area in hectares. When None, use the module default.
+        scale_m: Satellite resolution in meters (30 for HLS, 20 for S2 B5/B8A, 10 for S2 main).
+
+    Returns:
+        The minimum acceptable pixel count for this paddock.
+    """
+    if area_ha is None:
+        return MIN_PIXEL_COUNT_DEFAULT
+    # Expected pixels = area_m2 / pixel_area_m2
+    expected = int(area_ha * 10_000 / (scale_m * scale_m))
+    # Require 20% of expected, but never below the absolute floor
+    return max(MIN_PIXEL_COUNT_ABSOLUTE, int(expected * MIN_PIXEL_FRACTION))
+
+
 def validate_ndvi_observation(
     ndvi_mean: float | None,
     ndvi_stddev: float | None = None,
     cloud_free_pct: float = 100.0,
     pixel_count: int = 1_000_000,
+    area_ha: float | None = None,
+    scale_m: int = 30,
 ) -> ValidationResult:
     """Sanity-check a single NDVI observation. No reference model needed.
 
@@ -85,6 +114,11 @@ def validate_ndvi_observation(
         ndvi_stddev: Spatial stddev across the paddock. High = noisy.
         cloud_free_pct: Percentage of valid pixels in the composite.
         pixel_count: Number of valid pixels actually contributing.
+        area_ha: Paddock area in hectares. When provided, the minimum pixel
+            count scales to paddock size (20% of expected pixels, floor 3).
+            This prevents tiny paddocks like OKF-NW (0.22 ha ≈ 2 HLS pixels)
+            from failing every observation on a fixed 10-pixel threshold.
+        scale_m: Satellite resolution in meters (default 30 for HLS).
 
     Returns:
         ValidationResult.valid is False if any check fails.
@@ -103,8 +137,9 @@ def validate_ndvi_observation(
     if cloud_free_pct < MIN_CLOUD_FREE_PCT:
         reasons.append(f"cloud-free {cloud_free_pct:.0f}% < {MIN_CLOUD_FREE_PCT:.0f}%")
 
-    if pixel_count < MIN_PIXEL_COUNT:
-        reasons.append(f"only {pixel_count} valid pixels (< {MIN_PIXEL_COUNT})")
+    effective_min_pixels = _min_pixels_for_area(area_ha, scale_m)
+    if pixel_count < effective_min_pixels:
+        reasons.append(f"only {pixel_count} valid pixels (< {effective_min_pixels})")
 
     return ValidationResult(valid=not reasons, reasons=reasons)
 
@@ -118,7 +153,8 @@ def validate_growth_delta(
     sdm_curr: float,
     sdm_prev: float,
     days: int,
-    weather_max_growth_kg_ha_day: float,
+    weather_max_growth_kg_ha_day: float | None = None,
+    weather_max_total_kg_ha: float | None = None,
     headroom: float = GROWTH_HEADROOM,
 ) -> ValidationResult:
     """Check whether NDVI-derived SDM change is physically possible.
@@ -128,13 +164,22 @@ def validate_growth_delta(
     A real observation should be at or below this ceiling; an observation
     well above it is impossible and indicates NDVI noise.
 
+    Provide **either** ``weather_max_growth_kg_ha_day`` (farm-wide per-day
+    rate, cheapest) **or** ``weather_max_total_kg_ha`` (per-paddock total
+    over the specific window, more accurate — see PR #28 Fix #2). If both
+    are given, the total takes precedence.
+
     Args:
         sdm_curr: Current SDM estimate (kg DM/ha).
         sdm_prev: Previous SDM estimate (kg DM/ha) from last observation.
         days: Days between the two observations.
-        weather_max_growth_kg_ha_day: Weather model's max potential growth
-            for the season/period (kg DM/ha/day). See pasture/growth.py
-            SEASONAL_MAX_GROWTH for typical values.
+        weather_max_growth_kg_ha_day: Per-day weather ceiling (kg/ha/day).
+            Historically this was the farm-wide ``SEASONAL_MAX_GROWTH``
+            constant; new callers should prefer the total form.
+        weather_max_total_kg_ha: Total potential growth for the specific
+            window (kg/ha), computed from
+            :func:`agriwebb.pasture.growth.calculate_farm_growth` for this
+            paddock with its own soil and (optionally) per-paddock weather.
         headroom: Multiplicative tolerance above weather max (default 1.5x).
 
     Returns:
@@ -145,9 +190,15 @@ def validate_growth_delta(
     if days <= 0:
         return ValidationResult(False, ["days must be positive"])
 
-    delta = sdm_curr - sdm_prev
-    max_possible_gain = weather_max_growth_kg_ha_day * days * headroom
+    if weather_max_total_kg_ha is None and weather_max_growth_kg_ha_day is None:
+        return ValidationResult(False, ["no weather ceiling provided"])
 
+    if weather_max_total_kg_ha is not None:
+        max_possible_gain = weather_max_total_kg_ha * headroom
+    else:
+        max_possible_gain = weather_max_growth_kg_ha_day * days * headroom
+
+    delta = sdm_curr - sdm_prev
     if delta > max_possible_gain:
         reasons.append(
             f"SDM gained {delta:.0f} kg/ha in {days}d, weather max is {max_possible_gain:.0f} kg/ha (impossible)"
@@ -165,6 +216,52 @@ def validate_growth_delta(
 # =============================================================================
 # Layer 3: temporal smoothing
 # =============================================================================
+
+
+def filter_history_by_span(
+    history: list[dict],
+    current_date: date,
+    max_span_days: int = TEMPORAL_MAX_SPAN_DAYS,
+) -> list[dict]:
+    """Keep only observations within the last ``max_span_days`` of the current date.
+
+    The temporal filter assumes the history it sees represents a single
+    continuous growth regime (same season, same management). Observations
+    that are months apart can span seasonal sign flips — spring up, winter
+    down — which confuses a delta-based filter into over-correcting
+    legitimate seasonal transitions as "spikes."
+
+    This helper drops stale history so the filter only sees recent,
+    regime-consistent data. For monthly observations this typically leaves
+    2-3 points (below ``TEMPORAL_MIN_HISTORY``), meaning the filter
+    gracefully opts out. For weekly/near-real-time data it leaves 12+
+    points, so the filter still works as intended.
+
+    Args:
+        history: List of observation dicts, each with a ``date`` field
+            (ISO string or date object).
+        current_date: The date of the new observation being filtered.
+        max_span_days: Maximum age of history entries to keep.
+
+    Returns:
+        Filtered history list (oldest to newest, subset of input).
+    """
+    cutoff = current_date - timedelta(days=max_span_days)
+    result = []
+    for entry in history:
+        raw = entry.get("date")
+        if isinstance(raw, str):
+            try:
+                entry_date = date.fromisoformat(raw)
+            except ValueError:
+                continue
+        elif isinstance(raw, date):
+            entry_date = raw
+        else:
+            continue
+        if entry_date >= cutoff:
+            result.append(entry)
+    return result
 
 
 def apply_temporal_filter(
@@ -186,6 +283,11 @@ def apply_temporal_filter(
 
     Requires at least ``TEMPORAL_MIN_HISTORY`` prior observations (so we
     have ≥3 deltas to compute stats from). Otherwise passes through.
+
+    **Seasonality note:** the filter assumes history represents a
+    consistent growth regime. Callers should pre-filter stale entries
+    via :func:`filter_history_by_span` before passing values here, so a
+    3-month gap between observations doesn't straddle a seasonal sign flip.
 
     Args:
         history: Recent values (oldest to newest).
