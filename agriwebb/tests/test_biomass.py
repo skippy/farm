@@ -132,7 +132,7 @@ class TestNdviToStandingDryMatter:
         for i in range(1, len(sdm_values)):
             assert sdm_values[i] >= sdm_values[i - 1], (
                 f"SDM should increase: NDVI {ndvi_values[i]} gave {sdm_values[i]} "
-                f"but NDVI {ndvi_values[i-1]} gave {sdm_values[i-1]}"
+                f"but NDVI {ndvi_values[i - 1]} gave {sdm_values[i - 1]}"
             )
 
     def test_sdm_is_rounded(self):

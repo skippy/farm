@@ -202,7 +202,7 @@ async def get_pasture_growth_rates(
         time_filter = f", time: {{ {', '.join(time_filter_parts)} }}" if time_filter_parts else ""
 
         query = f"""
-        query GetPastureGrowthRatesFiltered({', '.join(var_defs)}) {{
+        query GetPastureGrowthRatesFiltered({", ".join(var_defs)}) {{
           pastureGrowthRates(filter: {{
             farmId: {{ _eq: $farmId }}
             {time_filter}

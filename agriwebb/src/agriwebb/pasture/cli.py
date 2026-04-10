@@ -81,9 +81,7 @@ def _build_existing_growth_lookup(
     return existing_by_key
 
 
-def _growth_values_match(
-    new_value: float, existing_value: float, tolerance: float | None = None
-) -> bool:
+def _growth_values_match(new_value: float, existing_value: float, tolerance: float | None = None) -> bool:
     """Check if two growth rate values match within tolerance.
 
     Args:
@@ -305,7 +303,9 @@ async def estimate_current_growth(
 
         if climatology_days > 0:
             print(f"\nCalculating {forecast_days}-day growth projection...")
-            print(f"  (days 1-{api_forecast_days}: weather forecast, days {api_forecast_days + 1}-{forecast_days}: historical averages)")
+            print(
+                f"  (days 1-{api_forecast_days}: weather forecast, days {api_forecast_days + 1}-{forecast_days}: historical averages)"
+            )
         else:
             print(f"\nCalculating {forecast_days}-day growth projection...")
 
@@ -406,9 +406,7 @@ async def sync_growth_to_agriwebb(estimates: dict, dry_run: bool = False, force:
         min_date = min(record_dates)
         max_date = max(record_dates)
 
-        existing_records = await get_pasture_growth_rates(
-            start_date=min_date, end_date=max_date
-        )
+        existing_records = await get_pasture_growth_rates(start_date=min_date, end_date=max_date)
         existing_by_key = _build_existing_growth_lookup(existing_records)
         print(f"Found {len(existing_by_key)} existing records in date range")
     else:
@@ -976,7 +974,9 @@ Examples:
     # estimate - Weather-driven estimates
     estimate_parser = subparsers.add_parser("estimate", help="Weather-driven pasture growth estimates")
     estimate_parser.add_argument("--days", type=int, default=14, help="Days to look back for averages (default: 14)")
-    estimate_parser.add_argument("--forecast", action="store_true", help="Include 7-day growth projection (shortcut for --forecast-days 7)")
+    estimate_parser.add_argument(
+        "--forecast", action="store_true", help="Include 7-day growth projection (shortcut for --forecast-days 7)"
+    )
     estimate_parser.add_argument(
         "--forecast-days",
         type=int,
@@ -992,7 +992,9 @@ Examples:
     sync_parser.add_argument("--sdm", action="store_true", help="Sync standing dry matter (satellite NDVI)")
     sync_parser.add_argument("--days", type=int, default=14, help="Days to look back for growth rates (default: 14)")
     sync_parser.add_argument("--window", type=int, default=14, help="Satellite composite window for SDM (default: 14)")
-    sync_parser.add_argument("--forecast", action="store_true", help="Include 7-day forecast (shortcut for --forecast-days 7)")
+    sync_parser.add_argument(
+        "--forecast", action="store_true", help="Include 7-day forecast (shortcut for --forecast-days 7)"
+    )
     sync_parser.add_argument(
         "--forecast-days",
         type=int,

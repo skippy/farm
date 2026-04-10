@@ -116,14 +116,16 @@ def loss_report(data: FarmData) -> dict:
                 details.append(f"{get_name(lamb)}: {days}d")
             else:
                 details.append(get_name(lamb))
-        by_dam.append({
-            "dam": dam_display,
-            "breed": breed,
-            "litter_size": len(litter),
-            "lost": len(lost_lambs),
-            "category": ", ".join(sorted(set(categories))),
-            "detail": "; ".join(details),
-        })
+        by_dam.append(
+            {
+                "dam": dam_display,
+                "breed": breed,
+                "litter_size": len(litter),
+                "lost": len(lost_lambs),
+                "category": ", ".join(sorted(set(categories))),
+                "detail": "; ".join(details),
+            }
+        )
 
     # -- By sire --
     sire_stats: dict[str, dict] = {}
@@ -167,16 +169,18 @@ def loss_report(data: FarmData) -> dict:
                 yr_dam_ids.add(did)
 
         total_born = len(yr_lambs)
-        year_over_year.append({
-            "year": year,
-            "dams": len(yr_dam_ids),
-            "born": total_born,
-            "raised": len(yr_raised),
-            "stillborn": yr_cats.get("stillborn", 0) + yr_cats.get("prenatal", 0) + yr_cats.get("intrapartum", 0),
-            "early": yr_cats.get("early_loss", 0) + yr_cats.get("perinatal", 0),
-            "late": yr_cats.get("late_death", 0),
-            "rate": round(len(yr_raised) / total_born * 100, 1) if total_born else 0.0,
-        })
+        year_over_year.append(
+            {
+                "year": year,
+                "dams": len(yr_dam_ids),
+                "born": total_born,
+                "raised": len(yr_raised),
+                "stillborn": yr_cats.get("stillborn", 0) + yr_cats.get("prenatal", 0) + yr_cats.get("intrapartum", 0),
+                "early": yr_cats.get("early_loss", 0) + yr_cats.get("perinatal", 0),
+                "late": yr_cats.get("late_death", 0),
+                "rate": round(len(yr_raised) / total_born * 100, 1) if total_born else 0.0,
+            }
+        )
 
     return {
         "season": data.season,

@@ -109,8 +109,8 @@ class TestFindAnimalQueryPaths:
 
         mock_agriwebb.post("/v2").mock(
             side_effect=[
-                empty_animals_response(),   # by animalId — not found
-                animals_response(animal),   # by name — found!
+                empty_animals_response(),  # by animalId — not found
+                animals_response(animal),  # by name — found!
             ]
         )
 
@@ -125,9 +125,9 @@ class TestFindAnimalQueryPaths:
 
         mock_agriwebb.post("/v2").mock(
             side_effect=[
-                empty_animals_response(),   # by animalId
-                empty_animals_response(),   # by name
-                animals_response(animal),   # by vid — found!
+                empty_animals_response(),  # by animalId
+                empty_animals_response(),  # by name
+                animals_response(animal),  # by vid — found!
             ]
         )
 
@@ -142,10 +142,10 @@ class TestFindAnimalQueryPaths:
 
         mock_agriwebb.post("/v2").mock(
             side_effect=[
-                empty_animals_response(),   # by animalId
-                empty_animals_response(),   # by name
-                empty_animals_response(),   # by vid
-                animals_response(animal),   # by eid — found!
+                empty_animals_response(),  # by animalId
+                empty_animals_response(),  # by name
+                empty_animals_response(),  # by vid
+                animals_response(animal),  # by eid — found!
             ]
         )
 
@@ -385,13 +385,7 @@ class TestUpdateMapFeatureMutation:
                 ),
                 httpx.Response(
                     200,
-                    json={
-                        "data": {
-                            "updateMapFeature": {
-                                "mapFeature": {"id": "feat-002", "name": "Renamed"}
-                            }
-                        }
-                    },
+                    json={"data": {"updateMapFeature": {"mapFeature": {"id": "feat-002", "name": "Renamed"}}}},
                 ),
             ]
         )
@@ -425,13 +419,7 @@ class TestUpdateMapFeatureMutation:
                 ),
                 httpx.Response(
                     200,
-                    json={
-                        "data": {
-                            "updateMapFeature": {
-                                "mapFeature": {"id": "feat-003", "name": 'Bob\'s "Field"'}
-                            }
-                        }
-                    },
+                    json={"data": {"updateMapFeature": {"mapFeature": {"id": "feat-003", "name": 'Bob\'s "Field"'}}}},
                 ),
             ]
         )
@@ -473,9 +461,7 @@ class TestGetRainfallsDateFilter:
 
     async def test_start_date_builds_gte_filter(self, mock_agriwebb):
         """With start_date, query includes _gte time filter via variables."""
-        route = mock_agriwebb.post("/v2").mock(
-            return_value=httpx.Response(200, json={"data": {"rainfalls": []}})
-        )
+        route = mock_agriwebb.post("/v2").mock(return_value=httpx.Response(200, json={"data": {"rainfalls": []}}))
 
         await weather_api.get_rainfalls(start_date="2026-03-01")
 
@@ -486,9 +472,7 @@ class TestGetRainfallsDateFilter:
 
     async def test_end_date_builds_lte_filter(self, mock_agriwebb):
         """With end_date, query includes _lte time filter via variables."""
-        route = mock_agriwebb.post("/v2").mock(
-            return_value=httpx.Response(200, json={"data": {"rainfalls": []}})
-        )
+        route = mock_agriwebb.post("/v2").mock(return_value=httpx.Response(200, json={"data": {"rainfalls": []}}))
 
         await weather_api.get_rainfalls(end_date="2026-03-31")
 
@@ -499,9 +483,7 @@ class TestGetRainfallsDateFilter:
 
     async def test_both_dates_builds_combined_filter(self, mock_agriwebb):
         """With both dates, query includes both _gte and _lte via variables."""
-        route = mock_agriwebb.post("/v2").mock(
-            return_value=httpx.Response(200, json={"data": {"rainfalls": []}})
-        )
+        route = mock_agriwebb.post("/v2").mock(return_value=httpx.Response(200, json={"data": {"rainfalls": []}}))
 
         await weather_api.get_rainfalls(start_date="2026-03-01", end_date="2026-03-31")
 
@@ -515,9 +497,7 @@ class TestGetRainfallsDateFilter:
         """Date-filtered path includes farmId and sensorId as variables."""
         from agriwebb.core.config import settings
 
-        route = mock_agriwebb.post("/v2").mock(
-            return_value=httpx.Response(200, json={"data": {"rainfalls": []}})
-        )
+        route = mock_agriwebb.post("/v2").mock(return_value=httpx.Response(200, json={"data": {"rainfalls": []}}))
 
         await weather_api.get_rainfalls(start_date="2026-01-01")
 
@@ -535,10 +515,22 @@ class TestGetRainfallsDateFilter:
                 json={
                     "data": {
                         "rainfalls": [
-                            {"id": "r1", "time": 1772452800000, "value": 3.2, "unit": "mm", "mode": "cumulative",
-                             "sensorId": "s1"},
-                            {"id": "r2", "time": 1772539200000, "value": 7.6, "unit": "mm", "mode": "cumulative",
-                             "sensorId": "s1"},
+                            {
+                                "id": "r1",
+                                "time": 1772452800000,
+                                "value": 3.2,
+                                "unit": "mm",
+                                "mode": "cumulative",
+                                "sensorId": "s1",
+                            },
+                            {
+                                "id": "r2",
+                                "time": 1772539200000,
+                                "value": 7.6,
+                                "unit": "mm",
+                                "mode": "cumulative",
+                                "sensorId": "s1",
+                            },
                         ]
                     }
                 },
@@ -558,9 +550,7 @@ class TestGetRainfallsDateFilter:
         # Temporarily override sensor ID to include a quote
         monkeypatch.setattr(config.settings, "agriwebb_weather_sensor_id", 'sensor"inject')
 
-        route = mock_agriwebb.post("/v2").mock(
-            return_value=httpx.Response(200, json={"data": {"rainfalls": []}})
-        )
+        route = mock_agriwebb.post("/v2").mock(return_value=httpx.Response(200, json={"data": {"rainfalls": []}}))
 
         await weather_api.get_rainfalls(start_date="2026-01-01")
 
@@ -588,9 +578,7 @@ class TestGetPastureGrowthRatesDateFilter:
                 200,
                 json={
                     "data": {
-                        "pastureGrowthRates": [
-                            {"id": "pg1", "time": 1700000000000, "value": 15.5, "fieldId": "f1"}
-                        ]
+                        "pastureGrowthRates": [{"id": "pg1", "time": 1700000000000, "value": 15.5, "fieldId": "f1"}]
                     }
                 },
             )
@@ -672,9 +660,7 @@ class TestGetPastureGrowthRatesDateFilter:
             )
         )
 
-        result = await pasture_api.get_pasture_growth_rates(
-            start_date="2026-03-01", end_date="2026-03-31"
-        )
+        result = await pasture_api.get_pasture_growth_rates(start_date="2026-03-01", end_date="2026-03-31")
 
         assert len(result) == 2
         assert result[0]["fieldId"] == "f1"

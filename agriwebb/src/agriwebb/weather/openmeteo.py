@@ -500,7 +500,7 @@ async def show_weather_forecast(days: int = 7) -> None:
 
     try:
         current = await fetch_current_conditions()
-        temp_display = format_temp(current['temperature_c'])
+        temp_display = format_temp(current["temperature_c"])
         print(f"\nCurrent: {temp_display}")
     except Exception:
         print("\nCurrent conditions unavailable")
@@ -538,7 +538,7 @@ async def show_weather_forecast(days: int = 7) -> None:
     if climatology_days > 0:
         print("Data sources:")
         print(f"  Days 1-{api_forecast_days}: Open-Meteo weather forecast")
-        years_of_data = len({d['date'][:4] for d in historical_data})
+        years_of_data = len({d["date"][:4] for d in historical_data})
         print(f"  Days {api_forecast_days + 1}-{days}: Historical averages ({years_of_data} years of data)")
     else:
         print("Source: Open-Meteo weather forecast")
@@ -549,7 +549,7 @@ def _print_daily_forecast(forecast: list[DailyWeather], api_days: int) -> None:
     print(f"\n{'Date':<12} {'Day':<10} {'High/Low':<14} {'Precip':<10} {'Conditions'}")
     print("-" * 60)
 
-    day_names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+    day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
     today = date.today()
 
     for i, day in enumerate(forecast):
@@ -562,9 +562,9 @@ def _print_daily_forecast(forecast: list[DailyWeather], api_days: int) -> None:
         elif d == today + timedelta(days=1):
             day_name = "Tomorrow"
 
-        temp_range = format_temp_range(day['temp_min_c'], day['temp_max_c'])
-        precip = format_precip(day['precip_mm'])
-        conditions = get_precip_description(day['precip_mm'])
+        temp_range = format_temp_range(day["temp_min_c"], day["temp_max_c"])
+        precip = format_precip(day["precip_mm"])
+        conditions = get_precip_description(day["precip_mm"])
 
         # Mark climatology days
         marker = "" if i < api_days else " *"
@@ -588,12 +588,14 @@ def _print_weekly_forecast(forecast: list[DailyWeather], api_days: int, total_da
 
         # End week on Sunday or at end of data
         if d.weekday() == 6 or i == len(forecast) - 1:
-            weeks.append({
-                "start": week_start,
-                "end": d,
-                "days": current_week,
-                "is_forecast": i < api_days,
-            })
+            weeks.append(
+                {
+                    "start": week_start,
+                    "end": d,
+                    "days": current_week,
+                    "is_forecast": i < api_days,
+                }
+            )
             current_week = []
             week_start = None
 
@@ -616,9 +618,9 @@ def _print_weekly_forecast(forecast: list[DailyWeather], api_days: int, total_da
 
         period = f"{week['start'].strftime('%b %d')} - {week['end'].strftime('%b %d')}"
 
-        avg_temp = format_temp(summary['temp_avg_c'])
-        high_low = format_temp_range(summary['temp_low_c'], summary['temp_high_c'])
-        precip = format_precip_summary(summary['precip_total_mm'], summary['precip_days'])
+        avg_temp = format_temp(summary["temp_avg_c"])
+        high_low = format_temp_range(summary["temp_low_c"], summary["temp_high_c"])
+        precip = format_precip_summary(summary["precip_total_mm"], summary["precip_days"])
 
         print(f"{period:<20} {avg_temp:<12} {high_low:<14} {precip:<12} {source}")
 
@@ -630,6 +632,7 @@ def _print_weekly_forecast(forecast: list[DailyWeather], api_days: int, total_da
 
         # Group by month
         from collections import defaultdict
+
         monthly: dict[str, list] = defaultdict(list)
         for day in forecast:
             d = date.fromisoformat(day["date"])
@@ -641,9 +644,9 @@ def _print_weekly_forecast(forecast: list[DailyWeather], api_days: int, total_da
 
         for month, days in monthly.items():
             summary = _get_weekly_summary(days)
-            avg_temp = format_temp(summary['temp_avg_c'])
-            temp_range = format_temp_range(summary['temp_low_c'], summary['temp_high_c'])
-            precip = format_precip(summary['precip_total_mm'], decimals=1)
+            avg_temp = format_temp(summary["temp_avg_c"])
+            temp_range = format_temp_range(summary["temp_low_c"], summary["temp_high_c"])
+            precip = format_precip(summary["precip_total_mm"], decimals=1)
             print(f"{month:<16} {avg_temp:<12} {temp_range:<14} {precip} over {summary['days']}d")
 
 
@@ -655,15 +658,21 @@ async def main():
     parser = argparse.ArgumentParser(description="Open-Meteo weather data management")
     parser.add_argument("--update", action="store_true", help="Update weather cache")
     parser.add_argument("--current", action="store_true", help="Show current conditions")
-    parser.add_argument("--forecast", type=int, nargs="?", const=7, metavar="DAYS",
-                        help="Show forecast (default: 7 days, options: 7, 14, 30, 90)")
+    parser.add_argument(
+        "--forecast",
+        type=int,
+        nargs="?",
+        const=7,
+        metavar="DAYS",
+        help="Show forecast (default: 7 days, options: 7, 14, 30, 90)",
+    )
     parser.add_argument("--recent", type=int, default=7, help="Show N recent days")
     args = parser.parse_args()
 
     if args.current:
         print("Current conditions:")
         current = await fetch_current_conditions()
-        temp_f = current['temperature_c'] * 9/5 + 32
+        temp_f = current["temperature_c"] * 9 / 5 + 32
         print(f"  Temperature: {current['temperature_c']:.1f}°C ({temp_f:.0f}°F)")
         print(f"  Precipitation: {current['precipitation_mm']} mm")
         print(f"  Time: {current['time']}")

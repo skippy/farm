@@ -507,12 +507,25 @@ class TestPortalTools:
             {"recordId": "n3", "animalIds": ["ewe-1"], "observationDate": 3000, "note": "Good mother"},
         ],
         "death-record": [
-            {"recordId": "d1", "animalIds": ["lamb-3"], "observationDate": 5000,
-             "fate": {"fateCode": "Dead", "fateReason": "Dystocia", "fateDetails": "Breech presentation", "disposalMethod": "Composting"}},
+            {
+                "recordId": "d1",
+                "animalIds": ["lamb-3"],
+                "observationDate": 5000,
+                "fate": {
+                    "fateCode": "Dead",
+                    "fateReason": "Dystocia",
+                    "fateDetails": "Breech presentation",
+                    "disposalMethod": "Composting",
+                },
+            },
         ],
         "ai-record": [
-            {"recordId": "ai1", "animalIds": ["ewe-1"], "observationDate": 1000,
-             "straw": {"sireDetails": {"name": "Test Donor", "breed": "NCC"}, "semenType": "Conventional"}},
+            {
+                "recordId": "ai1",
+                "animalIds": ["ewe-1"],
+                "observationDate": 1000,
+                "straw": {"sireDetails": {"name": "Test Donor", "breed": "NCC"}, "semenType": "Conventional"},
+            },
         ],
     }
 
@@ -540,6 +553,7 @@ class TestPortalTools:
 
     async def test_get_notes_found(self):
         from agriwebb.mcp_server import get_notes
+
         result = _parse(await get_notes("Lamb A"))
         # Verify animal was found (not an error response)
         assert "animal" in result, f"Unexpected response: {result}"
@@ -549,27 +563,32 @@ class TestPortalTools:
 
     async def test_get_notes_not_found(self):
         from agriwebb.mcp_server import get_notes
+
         result = _parse(await get_notes("Nonexistent"))
         assert "error" in result
 
     async def test_get_notes_no_notes(self):
         from agriwebb.mcp_server import get_notes
+
         result = _parse(await get_notes("Big John"))  # sire, no notes in portal data
         assert result["notes"] == []
 
     async def test_get_death_details_dead_animal(self):
         from agriwebb.mcp_server import get_death_details
+
         result = _parse(await get_death_details("L03"))  # VID of lamb_c
         assert result.get("animal") == "L03"
         assert result.get("fate") == "Dead" or "fateReason" in result
 
     async def test_get_death_details_not_dead(self):
         from agriwebb.mcp_server import get_death_details
+
         result = _parse(await get_death_details("Daisy"))
         assert "not recorded as dead" in result.get("message", "")
 
     async def test_get_ai_records(self):
         from agriwebb.mcp_server import get_ai_records
+
         result = _parse(await get_ai_records())
         assert result["count"] == 1
         assert result["records"][0]["sireName"] == "Test Donor"
@@ -616,6 +635,7 @@ class TestStalenessWarnings:
     def test_missing_cache_produces_warning(self, tmp_path, monkeypatch):
         """No cache file at all produces a warning."""
         from agriwebb.mcp_server import _staleness_warning
+
         monkeypatch.setattr("agriwebb.core.config.get_cache_dir", lambda: tmp_path)
 
         warning = _staleness_warning()

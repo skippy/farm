@@ -57,20 +57,24 @@ class TestActiveImportsWork:
 
     def test_main_package(self):
         import agriwebb
+
         assert hasattr(agriwebb, "__version__")
 
     def test_core_settings(self):
         from agriwebb.core import settings
+
         assert settings is not None
         assert "agriwebb.config" not in sys.modules
 
     def test_core_get_cache_dir(self):
         from agriwebb.core import get_cache_dir
+
         assert callable(get_cache_dir)
         assert "agriwebb.config" not in sys.modules
 
     def test_core_client_has_graphql_error(self):
         from agriwebb.core.client import GraphQLError
+
         assert issubclass(GraphQLError, Exception)
         assert "agriwebb.config" not in sys.modules
 
@@ -80,42 +84,50 @@ class TestActiveImportsWork:
             ExternalAPIError,
             RetryableError,
         )
+
         assert issubclass(AgriWebbAPIError, Exception)
         assert issubclass(RetryableError, Exception)
         assert issubclass(ExternalAPIError, Exception)
 
     def test_core_units(self):
         from agriwebb.core.units import format_precip, format_temp
+
         assert callable(format_temp)
         assert callable(format_precip)
 
     def test_data_livestock(self):
         from agriwebb.data.livestock import cli
+
         assert callable(cli)
         assert "agriwebb.config" not in sys.modules
 
     def test_data_functions(self):
         from agriwebb.data import find_animal, get_animals, summarize_animals
+
         assert callable(find_animal)
         assert callable(get_animals)
         assert callable(summarize_animals)
 
     def test_weather_package(self):
         from agriwebb.weather import cli
+
         assert callable(cli)
         assert "agriwebb.config" not in sys.modules
 
     def test_weather_ncei(self):
         from agriwebb.weather.ncei import fetch_ncei_precipitation
+
         assert callable(fetch_ncei_precipitation)
 
     def test_weather_openmeteo(self):
         from agriwebb.weather.openmeteo import fetch_historical
+
         assert callable(fetch_historical)
 
     def test_weather_is_package_not_file(self):
         """agriwebb.weather resolves to the package directory, not legacy .py."""
         import agriwebb.weather
+
         assert hasattr(agriwebb.weather, "__path__"), (
             "agriwebb.weather should be a package (directory), not a single .py file"
         )
@@ -133,9 +145,7 @@ class TestLegacyConfigNeverLoads:
         """If agriwebb.client is in sys.modules, it must be the core client."""
         if "agriwebb.client" in sys.modules:
             mod = sys.modules["agriwebb.client"]
-            assert hasattr(mod, "GraphQLError"), (
-                "agriwebb.client resolved to legacy client.py instead of core.client"
-            )
+            assert hasattr(mod, "GraphQLError"), "agriwebb.client resolved to legacy client.py instead of core.client"
 
     def test_config_not_loaded_after_imports(self):
         """Legacy agriwebb.config must not be loaded by any active import chain."""
@@ -144,6 +154,7 @@ class TestLegacyConfigNeverLoads:
         from agriwebb.core import settings  # noqa: F401
         from agriwebb.data import livestock  # noqa: F401
         from agriwebb.weather import ncei  # noqa: F401
+
         assert "agriwebb.config" not in sys.modules
 
     def test_bulk_imports_avoid_legacy(self):

@@ -90,12 +90,7 @@ def load_farm_data(season: int | None = None) -> FarmData:
 def get_name(animal: dict) -> str:
     """Return best display name: name > vid > eid > animalId[:8]."""
     identity = animal.get("identity") or {}
-    return (
-        identity.get("name")
-        or identity.get("vid")
-        or identity.get("eid")
-        or animal.get("animalId", "?")[:8]
-    )
+    return identity.get("name") or identity.get("vid") or identity.get("eid") or animal.get("animalId", "?")[:8]
 
 
 def get_breed(animal: dict) -> str:

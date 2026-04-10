@@ -43,9 +43,7 @@ class SyncResult(TypedDict):
 # =============================================================================
 
 
-def _calculate_total_days(
-    days: int | None, months: int | None, years: int | None
-) -> int:
+def _calculate_total_days(days: int | None, months: int | None, years: int | None) -> int:
     """Calculate total days from CLI arguments."""
     total = 0
     if days:
@@ -148,7 +146,7 @@ def _get_record_status(
         return "unchanged"
     else:
         existing_inches = existing_value / 25.4
-        return f"update ({existing_inches:.2f}\"→{record['precipitation_inches']:.2f}\")"
+        return f'update ({existing_inches:.2f}"→{record["precipitation_inches"]:.2f}")'
 
 
 def _print_sync_table(
@@ -162,7 +160,7 @@ def _print_sync_table(
     for record in weather_data:
         status = _get_record_status(record, existing_by_date, force)
         print(
-            f'{record["date"]:<12} {record.get("source", "unknown"):<12} '
+            f"{record['date']:<12} {record.get('source', 'unknown'):<12} "
             f'{record["precipitation_inches"]:>7.2f}" {status}'
         )
 
@@ -223,9 +221,7 @@ async def cmd_sync(args: argparse.Namespace) -> None:
     existing_by_date: dict[str, float] = {}
     if not force:
         print("\nFetching existing AgriWebb records...")
-        existing_rainfalls = await weather_api.get_rainfalls(
-            start_date=str(start_date), end_date=str(end_date)
-        )
+        existing_rainfalls = await weather_api.get_rainfalls(start_date=str(start_date), end_date=str(end_date))
         existing_by_date = _build_existing_rainfall_lookup(existing_rainfalls)
         print(f"Found {len(existing_by_date)} existing records in date range")
     else:
@@ -391,8 +387,7 @@ Examples:
     # forecast - Show forecast
     forecast_parser = subparsers.add_parser("forecast", help="Show weather forecast")
     forecast_parser.add_argument(
-        "--days", type=int, default=7,
-        help="Forecast horizon: 7 (standard), 14 (extended), 30 (monthly), 90 (seasonal)"
+        "--days", type=int, default=7, help="Forecast horizon: 7 (standard), 14 (extended), 30 (monthly), 90 (seasonal)"
     )
 
     # list - List AgriWebb rainfall records

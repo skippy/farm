@@ -34,9 +34,7 @@ class GraphQLError(Exception):
     """Raised when a GraphQL query returns errors."""
 
     # Matches UUIDs and UUID-like hex strings (8-4-4-4-12 or 32+ hex chars)
-    _UUID_RE = re.compile(
-        r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
-    )
+    _UUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 
     def __init__(self, errors: list[dict], query: str | None = None):
         self.errors = errors

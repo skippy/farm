@@ -32,14 +32,25 @@ def farm_data() -> FarmData:
          parentage records
     """
     sire = _animal(
-        animal_id="ram-1", name="Big John", sex="Male", age_class="ram", birth_year=2019,
+        animal_id="ram-1",
+        name="Big John",
+        sex="Male",
+        age_class="ram",
+        birth_year=2019,
     )
     sire2 = _animal(
-        animal_id="ram-2", name="Atlas", sex="Male", age_class="ram", birth_year=2020,
+        animal_id="ram-2",
+        name="Atlas",
+        sex="Male",
+        age_class="ram",
+        birth_year=2020,
     )
     ewe1 = _animal(animal_id="ewe-1", name="Daisy", birth_year=2021)
     ewe2 = _animal(
-        animal_id="ewe-2", name="Clover", breed="Finnsheep", birth_year=2023,
+        animal_id="ewe-2",
+        name="Clover",
+        breed="Finnsheep",
+        birth_year=2023,
     )
 
     sire_ref = _parent("ram-1", name="Big John")
@@ -49,44 +60,74 @@ def farm_data() -> FarmData:
 
     # 2025 lamb from Daisy (makes her experienced in 2026)
     lamb_2025 = _animal(
-        animal_id="l-2025-1", vid="L25-01", birth_year=2025,
-        age_class="ewe_hogget", days_reared=365,
-        sires=[sire_ref], dams=[dam1_ref],
+        animal_id="l-2025-1",
+        vid="L25-01",
+        birth_year=2025,
+        age_class="ewe_hogget",
+        days_reared=365,
+        sires=[sire_ref],
+        dams=[dam1_ref],
     )
 
     # 2026 lambs from Daisy: twins, both live
     lamb_2026_1 = _animal(
-        animal_id="l-2026-1", name="Lamb A", birth_year=2026,
-        sex="Male", age_class="ram_lamb", days_reared=30,
-        sires=[sire_ref], dams=[dam1_ref],
+        animal_id="l-2026-1",
+        name="Lamb A",
+        birth_year=2026,
+        sex="Male",
+        age_class="ram_lamb",
+        days_reared=30,
+        sires=[sire_ref],
+        dams=[dam1_ref],
     )
     lamb_2026_2 = _animal(
-        animal_id="l-2026-2", name="Lamb B", birth_year=2026,
-        sex="Female", age_class="ewe_lamb", days_reared=30,
-        sires=[sire_ref], dams=[dam1_ref],
+        animal_id="l-2026-2",
+        name="Lamb B",
+        birth_year=2026,
+        sex="Female",
+        age_class="ewe_lamb",
+        days_reared=30,
+        sires=[sire_ref],
+        dams=[dam1_ref],
     )
 
     # 2026 lambs from Clover: triplets (two alive, one stillborn)
     lamb_2026_3 = _animal(
-        animal_id="l-2026-3", name="Lamb C", birth_year=2026,
-        sex="Female", age_class="ewe_lamb", days_reared=30,
-        sires=[sire2_ref], dams=[dam2_ref],
+        animal_id="l-2026-3",
+        name="Lamb C",
+        birth_year=2026,
+        sex="Female",
+        age_class="ewe_lamb",
+        days_reared=30,
+        sires=[sire2_ref],
+        dams=[dam2_ref],
     )
     lamb_2026_4 = _animal(
-        animal_id="l-2026-4", name="Lamb D", birth_year=2026,
-        sex="Male", age_class="ram_lamb", fate="Sold", on_farm=False,
+        animal_id="l-2026-4",
+        name="Lamb D",
+        birth_year=2026,
+        sex="Male",
+        age_class="ram_lamb",
+        fate="Sold",
+        on_farm=False,
         days_reared=90,
-        sires=[sire2_ref], dams=[dam2_ref],
+        sires=[sire2_ref],
+        dams=[dam2_ref],
     )
     lamb_2026_5 = _animal(
-        animal_id="l-2026-5", name="Lamb E", birth_year=2026,
-        sex="Male", age_class="ram_lamb", fate="Dead", on_farm=False,
+        animal_id="l-2026-5",
+        name="Lamb E",
+        birth_year=2026,
+        sex="Male",
+        age_class="ram_lamb",
+        fate="Dead",
+        on_farm=False,
         days_reared=0,
-        sires=[sire2_ref], dams=[dam2_ref],
+        sires=[sire2_ref],
+        dams=[dam2_ref],
     )
 
-    animals = [sire, sire2, ewe1, ewe2, lamb_2025,
-               lamb_2026_1, lamb_2026_2, lamb_2026_3, lamb_2026_4, lamb_2026_5]
+    animals = [sire, sire2, ewe1, ewe2, lamb_2025, lamb_2026_1, lamb_2026_2, lamb_2026_3, lamb_2026_4, lamb_2026_5]
     by_id = {a["animalId"]: a for a in animals}
 
     service_groups = [
@@ -279,9 +320,14 @@ class TestLossReport:
         dam = _animal(animal_id="d1", name="Dam", birth_year=2020)
         sire = _animal(animal_id="s1", name="Sire", sex="Male", age_class="ram")
         lamb = _animal(
-            animal_id="dead-early", name="Early", birth_year=2026,
-            fate="Dead", days_reared=5, on_farm=False,
-            sires=[sire_ref], dams=[dam_ref],
+            animal_id="dead-early",
+            name="Early",
+            birth_year=2026,
+            fate="Dead",
+            days_reared=5,
+            on_farm=False,
+            sires=[sire_ref],
+            dams=[dam_ref],
         )
         data = FarmData(
             animals=[dam, sire, lamb],

@@ -46,6 +46,7 @@ from agriwebb.analysis.lambing.loader import (
 # Shared fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def ram():
     return _animal(
@@ -179,6 +180,7 @@ def three_gen():
 # load_farm_data
 # ---------------------------------------------------------------------------
 
+
 class TestLoadFarmData:
     def test_loads_animals(self, tmp_path, monkeypatch):
         """Loading animals.json via load_farm_data should populate animals and by_id."""
@@ -253,6 +255,7 @@ class TestLoadFarmData:
 # ---------------------------------------------------------------------------
 # Classification helpers
 # ---------------------------------------------------------------------------
+
 
 class TestClassificationHelpers:
     def test_get_name_prefers_name(self):
@@ -388,6 +391,7 @@ class TestClassificationHelpers:
 # Parentage helpers
 # ---------------------------------------------------------------------------
 
+
 class TestParentageHelpers:
     def test_get_sire_id(self, family):
         lamb = family[2]  # lamb_alive
@@ -428,6 +432,7 @@ class TestParentageHelpers:
 # ---------------------------------------------------------------------------
 # Lineage: get_ancestors
 # ---------------------------------------------------------------------------
+
 
 class TestGetAncestors:
     def test_three_generations(self, three_gen):
@@ -470,6 +475,7 @@ class TestGetAncestors:
 # Offspring and litter
 # ---------------------------------------------------------------------------
 
+
 class TestOffspringAndLitter:
     def test_get_offspring_by_sire(self, family):
         offspring = get_offspring("ram-1", family)
@@ -504,6 +510,7 @@ class TestOffspringAndLitter:
 # ---------------------------------------------------------------------------
 # Loss classification
 # ---------------------------------------------------------------------------
+
 
 class TestLossClassification:
     def test_stillborn(self):
@@ -562,6 +569,7 @@ class TestLossClassification:
 # Breeding group helpers
 # ---------------------------------------------------------------------------
 
+
 class TestBreedingGroupHelpers:
     @pytest.fixture
     def groups(self):
@@ -595,6 +603,7 @@ class TestBreedingGroupHelpers:
 # ---------------------------------------------------------------------------
 # Experience & age helpers
 # ---------------------------------------------------------------------------
+
 
 class TestExperienceHelpers:
     def test_get_lambing_history(self, family):
@@ -657,6 +666,7 @@ class TestExperienceHelpers:
 # ---------------------------------------------------------------------------
 # Breed cross classification
 # ---------------------------------------------------------------------------
+
 
 class TestBreedCross:
     def _by_id(self, *animals):
@@ -721,6 +731,7 @@ class TestBreedCross:
 # ---------------------------------------------------------------------------
 # Edge cases: missing / None fields
 # ---------------------------------------------------------------------------
+
 
 class TestEdgeCases:
     def test_empty_animal(self):
