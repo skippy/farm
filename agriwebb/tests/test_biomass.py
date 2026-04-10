@@ -11,17 +11,28 @@ import pytest
 
 from agriwebb.pasture.biomass import (
     ANNUAL_MODEL,
+    ANNUAL_MODEL_EVI,
+    ANNUAL_MODEL_NDRE,
     EXPECTED_UNCERTAINTY,
     GRAZING_BASE_CORRECTION,
     GRAZING_DECAY_RATE,
     GRAZING_MIN_CORRECTION,
+    LAI_K,
+    LEAF_TO_TOTAL_BY_SEASON,
+    NDRE_MAX,
+    NDRE_SOIL,
     SEASONAL_MODELS,
+    SEASONAL_MODELS_EVI,
+    SEASONAL_MODELS_NDRE,
+    SLW_DEFAULT_KG_M2,
     CalibrationModel,
     Season,
     adjust_foo_for_grazing,
     calculate_grazing_correction,
     calculate_growth_rate,
     get_season,
+    lai_to_standing_dry_matter,
+    ndre_to_lai,
     ndvi_to_standing_dry_matter,
 )
 
@@ -488,3 +499,266 @@ class TestEdgeCases:
         assert "Spring" in notes
         # Growth should be positive (NDVI increased)
         assert rate > 0
+
+
+# =============================================================================
+# EVI calibration
+# =============================================================================
+
+
+class TestEviCalibration:
+    """Tests for the EVI seasonal models and ndvi_to_standing_dry_matter(index='EVI')."""
+
+    def test_all_four_seasons_have_evi_models(self):
+        assert set(SEASONAL_MODELS_EVI.keys()) == {Season.WINTER, Season.SPRING, Season.SUMMER, Season.FALL}
+
+    def test_evi_model_names_labeled(self):
+        for _season, model in SEASONAL_MODELS_EVI.items():
+            assert "EVI" in model.name
+
+    def test_evi_models_have_positive_parameters(self):
+        for season, model in SEASONAL_MODELS_EVI.items():
+            assert model.scale > 0, f"{season}: scale must be positive"
+            assert model.coef > 0, f"{season}: coef must be positive"
+            assert model.offset >= 0, f"{season}: offset must be non-negative"
+            assert model.min_ndvi > 0, f"{season}: min_ndvi must be positive"
+            assert model.max_sdm > 0, f"{season}: max_sdm must be positive"
+
+    def test_evi_produces_sdm_in_plausible_range(self):
+        """Moderate EVI (0.4) should give a plausible SDM for each season."""
+        for month, season_name in [(1, "winter"), (4, "spring"), (7, "summer"), (10, "fall")]:
+            sdm, model = ndvi_to_standing_dry_matter(0.4, month=month, index="EVI")
+            assert 0 < sdm < 5000, f"{season_name}: EVI 0.4 produced implausible SDM {sdm}"
+            assert "EVI" in model.name
+
+    def test_evi_spring_has_highest_max_sdm(self):
+        spring_max = SEASONAL_MODELS_EVI[Season.SPRING].max_sdm
+        for season, model in SEASONAL_MODELS_EVI.items():
+            if season != Season.SPRING:
+                assert model.max_sdm <= spring_max
+
+    def test_index_selects_calibration(self):
+        """Passing index='EVI' vs 'NDVI' picks different calibrations."""
+        _, ndvi_model = ndvi_to_standing_dry_matter(0.4, month=4, index="NDVI")
+        _, evi_model = ndvi_to_standing_dry_matter(0.4, month=4, index="EVI")
+        assert "EVI" in evi_model.name
+        assert "EVI" not in ndvi_model.name
+
+    def test_annual_evi_fallback_when_no_month(self):
+        _, model = ndvi_to_standing_dry_matter(0.4, index="EVI")
+        assert model is ANNUAL_MODEL_EVI
+
+    def test_annual_ndvi_fallback_when_no_month(self):
+        _, model = ndvi_to_standing_dry_matter(0.4, index="NDVI")
+        assert model is ANNUAL_MODEL
+
+    def test_unknown_index_raises(self):
+        with pytest.raises(ValueError, match="Unknown vegetation index"):
+            ndvi_to_standing_dry_matter(0.4, month=4, index="SAVI")
+
+    def test_explicit_model_overrides_index(self):
+        """When a model is given explicitly, index is ignored."""
+        custom = CalibrationModel(
+            name="Custom",
+            scale=1000,
+            coef=2.0,
+            offset=50,
+            min_ndvi=0.05,
+            max_sdm=5000,
+            source="test",
+        )
+        _, model = ndvi_to_standing_dry_matter(0.4, model=custom, index="EVI")
+        assert model is custom
+
+    def test_below_evi_threshold_returns_zero(self):
+        """EVI below min_ndvi of the EVI model returns zero."""
+        evi_spring = SEASONAL_MODELS_EVI[Season.SPRING]
+        sdm, _ = ndvi_to_standing_dry_matter(evi_spring.min_ndvi - 0.01, month=4, index="EVI")
+        assert sdm == 0.0
+
+    def test_evi_ndvi_give_different_sdm_for_same_input(self):
+        """Same input value → different SDM under NDVI vs EVI calibrations.
+
+        Use winter calibration with a low value so neither model saturates.
+        """
+        sdm_ndvi, _ = ndvi_to_standing_dry_matter(0.3, month=1, index="NDVI")
+        sdm_evi, _ = ndvi_to_standing_dry_matter(0.3, month=1, index="EVI")
+        assert sdm_ndvi != sdm_evi
+
+
+# =============================================================================
+# NDRE calibration
+# =============================================================================
+
+
+class TestNdreCalibration:
+    """Tests for the NDRE seasonal models."""
+
+    def test_all_four_seasons_have_ndre_models(self):
+        assert set(SEASONAL_MODELS_NDRE.keys()) == {Season.WINTER, Season.SPRING, Season.SUMMER, Season.FALL}
+
+    def test_ndre_model_names_labeled(self):
+        for _season, model in SEASONAL_MODELS_NDRE.items():
+            assert "NDRE" in model.name
+
+    def test_ndre_models_have_positive_parameters(self):
+        for season, model in SEASONAL_MODELS_NDRE.items():
+            assert model.scale > 0, f"{season}: scale must be positive"
+            assert model.coef > 0, f"{season}: coef must be positive"
+            assert model.min_ndvi > 0, f"{season}: min_ndvi must be positive"
+            assert model.max_sdm > 0, f"{season}: max_sdm must be positive"
+
+    def test_ndre_spring_ceiling_exceeds_ndvi(self):
+        """NDRE's saturation ceiling should be higher than NDVI's (it saturates later)."""
+        assert SEASONAL_MODELS_NDRE[Season.SPRING].max_sdm > SEASONAL_MODELS[Season.SPRING].max_sdm
+
+    def test_index_ndre_dispatches_correctly(self):
+        _, model = ndvi_to_standing_dry_matter(0.3, month=4, index="NDRE")
+        assert "NDRE" in model.name
+
+    def test_annual_ndre_fallback_when_no_month(self):
+        _, model = ndvi_to_standing_dry_matter(0.3, index="NDRE")
+        assert model is ANNUAL_MODEL_NDRE
+
+    def test_ndre_produces_plausible_sdm(self):
+        """Typical pasture NDRE (0.3) should give plausible SDM for each season."""
+        for month in [1, 4, 7, 10]:
+            sdm, _ = ndvi_to_standing_dry_matter(0.3, month=month, index="NDRE")
+            assert 0 < sdm < 5500
+
+
+# =============================================================================
+# LAI conversion helpers
+# =============================================================================
+
+
+class TestNdreToLai:
+    """Tests for NDRE → LAI inversion."""
+
+    def test_ndre_at_soil_baseline_gives_zero_lai(self):
+        assert ndre_to_lai(NDRE_SOIL) == 0.0
+
+    def test_ndre_below_soil_gives_zero(self):
+        assert ndre_to_lai(NDRE_SOIL - 0.01) == 0.0
+        assert ndre_to_lai(-0.1) == 0.0
+
+    def test_ndre_increases_with_lai(self):
+        """Higher NDRE produces higher LAI (monotonic)."""
+        values = [0.10, 0.15, 0.20, 0.30, 0.40, 0.50]
+        lais = [ndre_to_lai(v) for v in values]
+        for i in range(1, len(lais)):
+            assert lais[i] > lais[i - 1]
+
+    def test_lai_clamped_at_six(self):
+        """LAI is capped at 6 even if NDRE is very high."""
+        assert ndre_to_lai(NDRE_MAX - 0.001) <= 6.0
+        assert ndre_to_lai(0.95) <= 6.0
+
+    def test_typical_pasture_lai_range(self):
+        """NDRE 0.2-0.4 should give LAI in a realistic 0-4 range."""
+        # NDRE 0.2 is low-moderate pasture; LAI ~0.4 is realistic (thin cover)
+        assert 0.2 < ndre_to_lai(0.2) < 1.5
+        # NDRE 0.4 is moderate-dense pasture
+        assert 1.0 < ndre_to_lai(0.4) < 4.0
+
+    def test_lai_k_constant_used(self):
+        # A safeguard against accidental constant drift
+        import math
+
+        lai = ndre_to_lai(0.3)
+        ratio = (0.3 - NDRE_SOIL) / (NDRE_MAX - NDRE_SOIL)
+        expected = -math.log(1 - ratio) / LAI_K
+        assert abs(lai - expected) < 0.01
+
+
+class TestLaiToStandingDryMatter:
+    """Tests for LAI → SDM conversion using SLW."""
+
+    def test_zero_lai_gives_zero_sdm(self):
+        assert lai_to_standing_dry_matter(0) == 0.0
+
+    def test_sdm_scales_with_lai(self):
+        sdm1 = lai_to_standing_dry_matter(1.0)
+        sdm2 = lai_to_standing_dry_matter(2.0)
+        assert sdm2 > sdm1
+
+    def test_default_slw_produces_plausible_sdm(self):
+        """LAI of 3 with default SLW should give ~2000 kg/ha range."""
+        # LAI 3 × 0.04 kg/m² × 10000 = 1200 kg leaf-only
+        # Divided by 0.55 (default leaf-to-total) ≈ 2180 kg total
+        sdm = lai_to_standing_dry_matter(3.0)
+        assert 1500 < sdm < 3000
+
+    def test_seasonal_leaf_to_total_varies(self):
+        """Spring (high leaf fraction) → lower total SDM for same LAI than
+        summer (low leaf fraction), because total = leaf / ratio."""
+        sdm_spring = lai_to_standing_dry_matter(3.0, month=4)
+        sdm_summer = lai_to_standing_dry_matter(3.0, month=7)
+        assert sdm_summer > sdm_spring
+
+    def test_custom_slw(self):
+        """Different SLW produces different SDM."""
+        default = lai_to_standing_dry_matter(3.0, month=4)
+        lighter = lai_to_standing_dry_matter(3.0, month=4, slw_kg_m2=0.030)
+        heavier = lai_to_standing_dry_matter(3.0, month=4, slw_kg_m2=0.050)
+        assert lighter < default < heavier
+
+    def test_leaf_to_total_covers_all_seasons(self):
+        """Sanity check the season → ratio dict."""
+        assert set(LEAF_TO_TOTAL_BY_SEASON.keys()) == {
+            Season.WINTER,
+            Season.SPRING,
+            Season.SUMMER,
+            Season.FALL,
+        }
+        for ratio in LEAF_TO_TOTAL_BY_SEASON.values():
+            assert 0 < ratio < 1
+
+    def test_slw_default_is_reasonable(self):
+        # ~40 g/m² is the middle of the published range for cool-season grass
+        assert 0.02 < SLW_DEFAULT_KG_M2 < 0.06
+
+    def test_no_month_uses_fallback_ratio(self):
+        """Without month, SDM is still computed using a default ratio."""
+        sdm = lai_to_standing_dry_matter(2.0)
+        assert sdm > 0
+
+
+# =============================================================================
+# Full NDRE → LAI → SDM pipeline
+# =============================================================================
+
+
+class TestNdreLaiSdmPipeline:
+    """Integration: NDRE → LAI → SDM and comparing to the NDRE exponential."""
+
+    def test_physics_and_empirical_produce_similar_magnitudes(self):
+        """The LAI physics path and the NDRE exponential path should be in the
+        same order of magnitude for moderate pasture values.
+
+        At NDRE ~0.4 (moderate pasture) both paths should land in the
+        1000-5000 kg/ha range. They won't agree exactly (different
+        calibrations) — we're just checking they aren't wildly off.
+        """
+        ndre = 0.40
+
+        # Physics path
+        lai = ndre_to_lai(ndre)
+        sdm_physics = lai_to_standing_dry_matter(lai, month=4)
+
+        # Empirical path
+        sdm_empirical, _ = ndvi_to_standing_dry_matter(ndre, month=4, index="NDRE")
+
+        # Both should be in a realistic range for moderate pasture
+        assert 500 < sdm_physics < 6000
+        assert 500 < sdm_empirical < 6000
+
+    def test_low_ndre_gives_low_sdm(self):
+        """Very low NDRE (bare/dormant) should give low SDM via both paths."""
+        ndre = 0.10
+        sdm_physics = lai_to_standing_dry_matter(ndre_to_lai(ndre), month=4)
+        sdm_empirical, _ = ndvi_to_standing_dry_matter(ndre, month=4, index="NDRE")
+        assert sdm_physics < 1000
+        # Empirical exponential: 900 * exp(5.5*0.10) + 100 = 900*1.733 + 100 = 1660
+        # Still within reason as an "approaching bare" signal
+        assert sdm_empirical < 2500

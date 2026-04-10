@@ -444,6 +444,7 @@ def calculate_farm_growth(
     end_date: date,
     paddock_soils: dict | None = None,
     weather_data: list[DailyWeather] | None = None,
+    weather_by_paddock: dict[str, list[DailyWeather]] | None = None,
 ) -> dict[str, list[DailyGrowthResult]]:
     """
     Calculate daily growth for all paddocks over a date range.
@@ -452,7 +453,13 @@ def calculate_farm_growth(
         start_date: Start date
         end_date: End date (inclusive)
         paddock_soils: Paddock soil data (loaded if not provided)
-        weather_data: Weather history (loaded if not provided)
+        weather_data: Farm-wide weather history used as the default for any
+            paddock not present in ``weather_by_paddock``. Loaded if not
+            provided.
+        weather_by_paddock: Optional per-paddock weather override
+            (``{paddock_name: [DailyWeather, ...]}``). When supplied, each
+            paddock uses its own timeseries; missing paddocks fall back to
+            ``weather_data``.
 
     Returns:
         Dict mapping paddock name to list of daily results
@@ -464,8 +471,15 @@ def calculate_farm_growth(
     if weather_data is None:
         weather_data = load_weather_history()
 
-    # Index weather by date
-    weather_by_date = {w["date"]: w for w in weather_data}
+    weather_by_paddock = weather_by_paddock or {}
+
+    # Farm-wide fallback index
+    farm_by_date = {w["date"]: w for w in weather_data}
+
+    # Per-paddock indices
+    paddock_by_date: dict[str, dict[str, DailyWeather]] = {
+        name: {w["date"]: w for w in series} for name, series in weather_by_paddock.items()
+    }
 
     # Create models for each paddock
     models = {}
@@ -479,10 +493,16 @@ def calculate_farm_growth(
     current = start_date
     while current <= end_date:
         date_str = current.isoformat()
-        weather = weather_by_date.get(date_str)
 
-        if weather:
-            for name, model in models.items():
+        for name, model in models.items():
+            # Prefer per-paddock weather, fall back to farm-wide
+            weather = None
+            if name in paddock_by_date:
+                weather = paddock_by_date[name].get(date_str)
+            if weather is None:
+                weather = farm_by_date.get(date_str)
+
+            if weather:
                 result = model.calculate_growth(
                     d=current,
                     temp_mean_c=weather.get("temp_mean_c", 10),
