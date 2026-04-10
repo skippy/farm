@@ -1155,6 +1155,30 @@ Examples:
     cache_parser = subparsers.add_parser("cache", help="Download weather, soil, and satellite data")
     cache_parser.add_argument("--refresh", action="store_true", help="Force full re-fetch, ignoring existing cache")
 
+    # backtest-gate - Replay cached NDVI history through the validation gate
+    backtest_parser = subparsers.add_parser(
+        "backtest-gate",
+        help="Replay cached NDVI history through the SDM validation gate",
+    )
+    backtest_parser.add_argument(
+        "--months",
+        type=int,
+        nargs="+",
+        metavar="M",
+        help="Filter to specific months (1-12). E.g. --months 12 1 for Dec+Jan.",
+    )
+    backtest_parser.add_argument(
+        "--paddock",
+        type=str,
+        help="Filter to paddocks whose name contains this substring (case-insensitive).",
+    )
+    backtest_parser.add_argument(
+        "--details",
+        action="store_true",
+        help="Show per-observation rejection/filter details.",
+    )
+    backtest_parser.add_argument("--json", action="store_true", help="Output as JSON")
+
     args = parser.parse_args()
 
     if args.command == "estimate":
@@ -1163,6 +1187,10 @@ Examples:
         await cmd_sync(args)
     elif args.command == "cache":
         await cmd_cache(args)
+    elif args.command == "backtest-gate":
+        from agriwebb.pasture.backtest import cli_main as backtest_cli_main
+
+        backtest_cli_main(args)
     else:
         parser.print_help()
 
