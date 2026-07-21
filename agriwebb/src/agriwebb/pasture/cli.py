@@ -29,10 +29,25 @@ from agriwebb.pasture.api import (
 )
 from agriwebb.pasture.biomass import ndvi_to_standing_dry_matter
 from agriwebb.pasture.growth import (
+    SEASONAL_MAX_GROWTH,
     calculate_farm_growth,
+    get_season,
     load_paddock_soils,
 )
+from agriwebb.pasture.validate import (
+    append_paddock_history,
+    apply_temporal_filter,
+    filter_history_by_span,
+    load_paddock_history,
+    validate_growth_delta,
+    validate_ndvi_observation,
+)
 from agriwebb.weather import fetch_ncei_date_range, openmeteo, save_weather_json
+from agriwebb.weather.paddock_weather import (
+    load_paddock_weather_cache,
+    update_paddock_weather_cache,
+    weather_by_paddock_from_cache,
+)
 
 # =============================================================================
 # Type Definitions
@@ -233,6 +248,14 @@ async def estimate_current_growth(
     paddock_soils = load_paddock_soils()
     print(f"Loaded {len(paddock_soils)} paddocks with soil data")
 
+    # Per-paddock weather (opportunistic — falls back to farm-wide on miss)
+    paddock_weather_cache = load_paddock_weather_cache()
+    weather_by_paddock = weather_by_paddock_from_cache(paddock_weather_cache)
+    if weather_by_paddock:
+        print(f"Loaded per-paddock weather for {len(weather_by_paddock)} paddocks")
+    else:
+        print("No per-paddock weather cache — using farm-wide weather for all paddocks")
+
     grazing_by_paddock = {}
     if include_grazing:
         try:
@@ -264,6 +287,7 @@ async def estimate_current_growth(
         end_date=end_date,
         paddock_soils=paddock_soils,
         weather_data=weather_data["daily_data"],
+        weather_by_paddock=weather_by_paddock or None,
     )
 
     current_estimates = {}
@@ -335,6 +359,7 @@ async def estimate_current_growth(
             end_date=forecast_end,
             paddock_soils=paddock_soils,
             weather_data=forecast_weather,
+            weather_by_paddock=weather_by_paddock or None,
         )
 
         for name, daily_results in forecast_results.items():
@@ -609,11 +634,28 @@ async def sync_growth_rates(args: argparse.Namespace) -> None:
 
 
 async def sync_sdm(args: argparse.Namespace) -> None:
-    """Sync standing dry matter from satellite NDVI."""
+    """Sync standing dry matter from satellite NDVI.
+
+    Each observation passes through a three-layer validation gate before
+    being pushed (see pasture/validate.py):
+
+    1. Raw NDVI sanity (range, stddev, cloud-free pct, pixel count)
+    2. Growth-delta plausibility against the weather model upper bound
+    3. Temporal smoothing against the rolling history
+
+    Rejected observations are logged and skipped; filtered observations
+    (replaced with expected next step) are logged and pushed with the
+    adjusted value.
+    """
     from agriwebb.satellite import gee as satellite
 
+    strict = getattr(args, "strict", False)
+    index = getattr(args, "index", "NDVI").upper()
+    if index not in ("NDVI", "EVI", "NDRE"):
+        raise ValueError(f"Unknown vegetation index: {index!r} (use NDVI, EVI, or NDRE)")
+
     print("=" * 70)
-    print("Syncing Standing Dry Matter (Satellite NDVI)")
+    print(f"Syncing Standing Dry Matter (Satellite {index})")
     print("=" * 70)
     print()
 
@@ -632,14 +674,44 @@ async def sync_sdm(args: argparse.Namespace) -> None:
     start_date = end_date - timedelta(days=window_days)
 
     print(f"Satellite window: {start_date} to {end_date}")
+    print(f"Vegetation index: {index}")
+    print(f"Gate mode: {'strict (flagged deltas rejected)' if strict else 'warn (flagged deltas kept)'}")
     print()
 
-    print("Fetching NDVI and calculating SDM...")
+    # -------- Pre-compute per-paddock weather ceilings (Fix #2) --------
+    # For each paddock, compute the *theoretical* seasonal ceiling adjusted
+    # for that paddock's soil quality (drainage + organic matter). This gives
+    # productive soils (peat, high-OM) a higher L2 ceiling so legitimate
+    # bursts of growth aren't falsely flagged, while poor soils get a
+    # tighter ceiling. We deliberately do NOT gate by actual weather
+    # conditions here — we want the upper bound, not the expected value.
+    paddock_daily_max: dict[str, float] = {}
+    season_key = get_season(end_date).value
+    farm_wide_weather_max = SEASONAL_MAX_GROWTH[season_key]
+    try:
+        from agriwebb.pasture.growth import soil_quality_factor
+
+        paddock_soils = load_paddock_soils()
+        for pname, pdata in paddock_soils.items():
+            soil = pdata.get("soil", {})
+            drainage = soil.get("drainage")
+            om_raw = soil.get("organic_matter_pct")
+            om_pct = float(om_raw) if om_raw else None
+            factor = soil_quality_factor(drainage=drainage, organic_matter_pct=om_pct)
+            paddock_daily_max[pname] = farm_wide_weather_max * factor
+        print(f"Computed per-paddock soil-adjusted ceilings for {len(paddock_daily_max)} paddocks")
+    except Exception as e:
+        print(f"Warning: couldn't compute per-paddock ceilings, falling back to farm-wide: {e}")
     print()
-    print(f"{'Paddock':<30} {'NDVI':>8} {'SDM (kg/ha)':>12}")
-    print("-" * 55)
+
+    print(f"Fetching {index} and calculating SDM...")
+    print()
+    print(f"{'Paddock':<30} {index:>8} {'SDM (kg/ha)':>12}  Gate")
+    print("-" * 75)
 
     records = []
+    rejected_count = 0
+    filtered_count = 0
     current_month = end_date.month
 
     for p in paddocks:
@@ -647,35 +719,114 @@ async def sync_sdm(args: argparse.Namespace) -> None:
         name = p["name"]
 
         if not p.get("geometry"):
-            print(f"{name:<30} {'N/A':>8} {'skipped':>12}")
+            print(f"{name:<30} {'N/A':>8} {'skipped':>12}  no geometry")
             continue
 
         try:
-            result = satellite.extract_paddock_ndvi(p, start_date.isoformat(), end_date.isoformat(), scale=30)
-            ndvi = result.get("ndvi_mean")
-
-            if ndvi is None:
-                print(f"{name:<30} {'N/A':>8} {'no data':>12}")
-                continue
-
-            sdm, model = ndvi_to_standing_dry_matter(ndvi, month=current_month)
-            print(f"{name:<30} {ndvi:>8.3f} {sdm:>10.0f}")
-
-            records.append(
-                {
-                    "field_id": pid,
-                    "field_name": name,
-                    "sdm_kg_ha": sdm,
-                    "ndvi": ndvi,
-                    "record_date": end_date,
-                }
-            )
-
+            if index == "NDRE":
+                # NDRE uses Sentinel-2 native bands (not HLS) for red-edge.
+                # 20m native resolution matches B5/B8A.
+                result = satellite.extract_paddock_ndre(
+                    p,
+                    start_date.isoformat(),
+                    end_date.isoformat(),
+                    scale=20,
+                )
+            else:
+                result = satellite.extract_paddock_ndvi(
+                    p,
+                    start_date.isoformat(),
+                    end_date.isoformat(),
+                    scale=30,
+                    index=index,
+                )
         except Exception as e:
-            print(f"{name:<30} {'error':>8} {str(e)[:12]:>12}")
+            print(f"{name:<30} {'error':>8} {'':>12}  {str(e)[:30]}")
+            continue
+
+        # -------- Layer 1: raw index sanity --------
+        # Pass paddock area so the pixel count threshold scales to paddock
+        # size (3 floor for tiny paddocks, 20% of expected otherwise).
+        scale_m = 20 if index == "NDRE" else 30
+        raw = validate_ndvi_observation(
+            ndvi_mean=result.get("ndvi_mean"),
+            ndvi_stddev=result.get("ndvi_stddev"),
+            cloud_free_pct=result.get("cloud_free_pct") or 0.0,
+            pixel_count=result.get("pixel_count") or 0,
+            area_ha=p.get("totalArea"),
+            scale_m=scale_m,
+        )
+        if not raw.valid:
+            rejected_count += 1
+            ndvi_display = f"{result.get('ndvi_mean'):.3f}" if result.get("ndvi_mean") is not None else "N/A"
+            print(f"{name:<30} {ndvi_display:>8} {'rejected':>12}  {raw.reason}")
+            continue
+
+        ndvi = result["ndvi_mean"]
+        sdm, _ = ndvi_to_standing_dry_matter(ndvi, month=current_month, index=index)
+
+        # -------- Layer 2: growth-delta plausibility --------
+        full_history = load_paddock_history(pid)
+        # Only consider recent history (drops stale entries that span seasons).
+        recent_history = filter_history_by_span(full_history, end_date)
+        gate_notes = []
+        if recent_history:
+            last = recent_history[-1]
+            last_date = date.fromisoformat(last["date"]) if isinstance(last["date"], str) else last["date"]
+            days_since = (end_date - last_date).days
+            if days_since > 0:
+                # Per-paddock daily rate if we were able to compute it;
+                # otherwise fall back to the farm-wide seasonal constant.
+                paddock_max = paddock_daily_max.get(name, farm_wide_weather_max)
+                delta_check = validate_growth_delta(
+                    sdm_curr=sdm,
+                    sdm_prev=last["sdm"],
+                    days=days_since,
+                    weather_max_growth_kg_ha_day=paddock_max,
+                )
+                if not delta_check.valid:
+                    gate_notes.append(f"delta: {delta_check.reason}")
+                    if strict:
+                        rejected_count += 1
+                        print(f"{name:<30} {ndvi:>8.3f} {'rejected':>12}  {delta_check.reason}")
+                        continue
+
+        # -------- Layer 3: temporal smoothing --------
+        sdm_history = [h["sdm"] for h in recent_history]
+        sdm_filtered, replaced = apply_temporal_filter(sdm_history, sdm)
+        if replaced:
+            filtered_count += 1
+            gate_notes.append(f"smoothed {sdm:.0f}→{sdm_filtered:.0f}")
+            sdm = sdm_filtered
+
+        gate_display = "; ".join(gate_notes) if gate_notes else "ok"
+        print(f"{name:<30} {ndvi:>8.3f} {sdm:>10.0f}    {gate_display}")
+
+        # -------- Record accepted observation to history --------
+        append_paddock_history(
+            pid,
+            {
+                "date": end_date.isoformat(),
+                "index": index,
+                "ndvi": ndvi,
+                "sdm": sdm,
+                "ndvi_stddev": result.get("ndvi_stddev"),
+                "cloud_free_pct": result.get("cloud_free_pct"),
+            },
+        )
+
+        records.append(
+            {
+                "field_id": pid,
+                "field_name": name,
+                "sdm_kg_ha": sdm,
+                "ndvi": ndvi,
+                "record_date": end_date,
+            }
+        )
 
     print()
-    print(f"Calculated SDM for {len(records)} paddocks")
+    print(f"Calculated SDM for {len(records)} paddocks ({rejected_count} rejected, {filtered_count} smoothed)")
 
     if not records:
         print("No SDM records to sync.")
@@ -932,8 +1083,23 @@ async def cmd_cache(args: argparse.Namespace) -> None:
 
     print()
 
-    # Step 3: Fetch NDVI historical data
-    print("Step 3: Fetching historical NDVI from satellite...")
+    # Step 3: Per-paddock weather (Open-Meteo per centroid)
+    # Must come AFTER soils so paddock_soils has centroids populated.
+    print("Step 3: Fetching per-paddock weather from Open-Meteo...")
+    print("-" * 70)
+    try:
+        paddock_soils = load_paddock_soils()
+        if paddock_soils:
+            await update_paddock_weather_cache(paddock_soils, refresh=refresh)
+        else:
+            print("  No paddock_soils cache — skipping per-paddock weather")
+    except Exception as e:
+        print(f"  Warning: Could not fetch per-paddock weather: {e}")
+
+    print()
+
+    # Step 4: Fetch NDVI historical data
+    print("Step 4: Fetching historical NDVI from satellite...")
     print("-" * 70)
     try:
         await update_ndvi_cache_smart(refresh=refresh)
@@ -1004,10 +1170,49 @@ Examples:
     )
     sync_parser.add_argument("--dry-run", action="store_true", help="Preview without pushing to AgriWebb")
     sync_parser.add_argument("--force", action="store_true", help="Push all records, even if unchanged")
+    sync_parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="SDM gate: reject (not just warn) observations that fail growth-delta checks",
+    )
+    sync_parser.add_argument(
+        "--index",
+        choices=["NDVI", "EVI", "NDRE", "ndvi", "evi", "ndre"],
+        default="NDVI",
+        help=(
+            "Vegetation index for SDM (default: NDVI). "
+            "EVI saturates less at high biomass. "
+            "NDRE uses Sentinel-2 red-edge bands and works best for dense pasture."
+        ),
+    )
 
     # cache - Download weather, soil, and NDVI data
     cache_parser = subparsers.add_parser("cache", help="Download weather, soil, and satellite data")
     cache_parser.add_argument("--refresh", action="store_true", help="Force full re-fetch, ignoring existing cache")
+
+    # backtest-gate - Replay cached NDVI history through the validation gate
+    backtest_parser = subparsers.add_parser(
+        "backtest-gate",
+        help="Replay cached NDVI history through the SDM validation gate",
+    )
+    backtest_parser.add_argument(
+        "--months",
+        type=int,
+        nargs="+",
+        metavar="M",
+        help="Filter to specific months (1-12). E.g. --months 12 1 for Dec+Jan.",
+    )
+    backtest_parser.add_argument(
+        "--paddock",
+        type=str,
+        help="Filter to paddocks whose name contains this substring (case-insensitive).",
+    )
+    backtest_parser.add_argument(
+        "--details",
+        action="store_true",
+        help="Show per-observation rejection/filter details.",
+    )
+    backtest_parser.add_argument("--json", action="store_true", help="Output as JSON")
 
     args = parser.parse_args()
 
@@ -1017,6 +1222,10 @@ Examples:
         await cmd_sync(args)
     elif args.command == "cache":
         await cmd_cache(args)
+    elif args.command == "backtest-gate":
+        from agriwebb.pasture.backtest import cli_main as backtest_cli_main
+
+        backtest_cli_main(args)
     else:
         parser.print_help()
 
