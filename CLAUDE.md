@@ -28,7 +28,8 @@ farm/
 │   │   ├── weather/               # NOAA, Open-Meteo, rainfall
 │   │   └── mcp_server.py          # MCP server (10 livestock analysis tools)
 │   ├── docs/
-│   │   └── lambing-analysis.md    # Full lambing conventions & methodology
+│   │   ├── lambing-analysis.md    # Full lambing conventions & methodology
+│   │   └── pasture-biomass.md     # SDM pipeline design, SNAP NN research, calibration plan
 │   └── tests/
 └── CLAUDE.md                      # This file
 ```
@@ -207,6 +208,15 @@ The loader provides typed helpers for animal classification, lineage, loss analy
 and breeding group membership. See `agriwebb/src/agriwebb/analysis/lambing/loader.py`.
 
 ---
+
+## Pasture Biomass / SDM Pipeline
+
+**Design decisions, the SNAP biophysical NN research trail, and the
+local calibration plan are in
+[`agriwebb/docs/pasture-biomass.md`](agriwebb/docs/pasture-biomass.md).**
+Read that before touching `pasture/biomass.py`, `pasture/validate.py`,
+or the SDM sync path — especially if you're considering porting the
+SNAP NN or recalibrating the exponentials.
 
 ## Lambing Analysis
 

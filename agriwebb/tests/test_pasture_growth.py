@@ -20,6 +20,7 @@ from agriwebb.pasture.growth import (
     Season,
     SoilWaterState,
     calculate_daily_growth,
+    calculate_farm_growth,
     # Functions
     get_season,
     moisture_factor,
@@ -393,6 +394,118 @@ class TestSummarizeGrowth:
         summary = summarize_growth(results)
         assert "Full Paddock" in summary
         assert "Empty Paddock" not in summary
+
+
+class TestPerPaddockWeather:
+    """calculate_farm_growth with weather_by_paddock overrides."""
+
+    @pytest.fixture
+    def paddock_soils(self):
+        return {
+            "Wet Paddock": {
+                "paddock_id": "wet",
+                "area_ha": 5.0,
+                "soil": {"awc_cm_cm": 0.15, "drainage": "Well drained"},
+            },
+            "Dry Paddock": {
+                "paddock_id": "dry",
+                "area_ha": 5.0,
+                "soil": {"awc_cm_cm": 0.15, "drainage": "Well drained"},
+            },
+        }
+
+    @pytest.fixture
+    def farm_wide_weather(self):
+        # Farm-wide weather used as default fallback
+        return [
+            {
+                "date": "2026-04-15",
+                "temp_mean_c": 15.0,
+                "temp_max_c": 20.0,
+                "temp_min_c": 10.0,
+                "precip_mm": 5.0,
+                "et0_mm": 3.0,
+            }
+        ]
+
+    def test_no_per_paddock_falls_back_to_farm_wide(self, paddock_soils, farm_wide_weather):
+        """Without per-paddock weather, all paddocks use the farm-wide series."""
+        results = calculate_farm_growth(
+            start_date=date(2026, 4, 15),
+            end_date=date(2026, 4, 15),
+            paddock_soils=paddock_soils,
+            weather_data=farm_wide_weather,
+        )
+        # Both paddocks should produce growth
+        assert "Wet Paddock" in results
+        assert "Dry Paddock" in results
+        assert len(results["Wet Paddock"]) == 1
+        assert len(results["Dry Paddock"]) == 1
+        # Same weather → same growth (same soil properties)
+        assert results["Wet Paddock"][0]["growth_kg_ha_day"] == results["Dry Paddock"][0]["growth_kg_ha_day"]
+
+    def test_per_paddock_overrides_take_effect(self, paddock_soils, farm_wide_weather):
+        """When a paddock has its own weather, it diverges from the farm-wide default."""
+        # Wet paddock gets lots of precip; Dry paddock gets its own bone-dry weather
+        weather_by_paddock = {
+            "Wet Paddock": [
+                {
+                    "date": "2026-04-15",
+                    "temp_mean_c": 15.0,
+                    "temp_max_c": 20.0,
+                    "temp_min_c": 10.0,
+                    "precip_mm": 50.0,  # Lots of rain
+                    "et0_mm": 2.0,
+                }
+            ],
+            "Dry Paddock": [
+                {
+                    "date": "2026-04-15",
+                    "temp_mean_c": 25.0,  # Hotter
+                    "temp_max_c": 30.0,
+                    "temp_min_c": 20.0,
+                    "precip_mm": 0.0,  # Bone dry
+                    "et0_mm": 8.0,  # High ET
+                }
+            ],
+        }
+        results = calculate_farm_growth(
+            start_date=date(2026, 4, 15),
+            end_date=date(2026, 4, 15),
+            paddock_soils=paddock_soils,
+            weather_data=farm_wide_weather,
+            weather_by_paddock=weather_by_paddock,
+        )
+        wet = results["Wet Paddock"][0]
+        dry = results["Dry Paddock"][0]
+        # They should be different
+        assert wet != dry
+
+    def test_partial_per_paddock_fallback(self, paddock_soils, farm_wide_weather):
+        """A paddock missing from per-paddock weather falls back to farm-wide."""
+        weather_by_paddock = {
+            "Wet Paddock": [
+                {
+                    "date": "2026-04-15",
+                    "temp_mean_c": 15.0,
+                    "temp_max_c": 20.0,
+                    "temp_min_c": 10.0,
+                    "precip_mm": 50.0,
+                    "et0_mm": 2.0,
+                }
+            ],
+            # Dry Paddock is missing
+        }
+        results = calculate_farm_growth(
+            start_date=date(2026, 4, 15),
+            end_date=date(2026, 4, 15),
+            paddock_soils=paddock_soils,
+            weather_data=farm_wide_weather,
+            weather_by_paddock=weather_by_paddock,
+        )
+        # Both paddocks should still produce a result
+        assert len(results["Wet Paddock"]) == 1
+        assert len(results["Dry Paddock"]) == 1
 
 
 class TestSeasonalGrowthPatterns:
