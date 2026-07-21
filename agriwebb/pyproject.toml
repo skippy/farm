@@ -24,6 +24,7 @@ agriwebb-livestock = "agriwebb.data.livestock:cli"
 agriwebb-pasture = "agriwebb.pasture.cli:cli"
 agriwebb-mcp = "agriwebb.mcp_server:main"
 agriwebb-lambing = "agriwebb.analysis.lambing.cli:cli"
+agriwebb-waddl = "agriwebb.waddl.cli:cli"
 
 [dependency-groups]
 dev = [
