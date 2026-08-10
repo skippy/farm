@@ -262,9 +262,23 @@ def test_age_boundary_just_over_18_months_is_years():
     assert r.age_unit == "years"
 
 
-def test_unknown_sex_maps_to_unknown():
-    r = _resolve("A", [animal("A", name="A", sex="", age_class="")])
+def test_unknown_sex_maps_to_unknown_and_warns():
+    r = _resolve("A", [animal("A", name="A", sex="", age_class="", birth=date(2023, 1, 1))])
     assert (r.sex_code, r.sex_code_id) == ("Unknown (U)", 1)
+    assert any("sex unknown" in w for w in r.warnings)  # never fill silently
+
+
+def test_two_generation_missing_ancestor_stays_incomplete():
+    # X: sire pure NCC; dam D is a cross of pure BFL x MISSING grandparent.
+    # True mass: NCC 50% + BFL 25% + 25% unknown -> NCC dominant, incomplete.
+    # (Regression: renormalization used to fabricate a 50/50 NCC/BFL tie -> wrong breed.)
+    sire = animal("S", breed="North Country Cheviot")
+    gsire = animal("GS", breed="Bluefaced Leicester")
+    dam = animal("D", breed="1st Cross", sire_id="GS", dam_id="MISSING")
+    x = animal("X", name="X", breed="1st Cross", sire_id="S", dam_id="D", birth=date(2023, 1, 1))
+    r = _resolve("X", [x, sire, dam, gsire])  # grandam "MISSING" absent
+    assert r.taxon_family == "NCC"  # dominant, not flipped to BFL by a fabricated tie
+    assert any("incomplete pedigree" in w for w in r.warnings)
 
 
 def test_empty_token_is_not_found():

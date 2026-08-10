@@ -160,8 +160,9 @@ def resolve_token(
     ident = _identity(match)
     taxon_suffix, family, breed_id, tax_warn = _taxon(match, by_id)
     sex_label, sex_id = sex_code(match)
+    sex_warn = "sex unknown in cache - confirm and set manually" if sex_id == SEX_UNKNOWN[1] else None
     age, unit, uom_id, age_warn = age_fields(match, today)
-    warnings.extend(w for w in (tax_warn, age_warn) if w)
+    warnings.extend(w for w in (tax_warn, sex_warn, age_warn) if w)
 
     return ResolvedAnimal(
         token=tok,
@@ -312,11 +313,12 @@ def _composition(animal: dict | None, by_id: dict[str, dict], depth: int = 4) ->
     out: dict[str, float] = defaultdict(float)
     for parent_id in (get_sire_id(animal), get_dam_id(animal)):
         sub = _composition(by_id.get(parent_id or ""), by_id, depth - 1)
-        total = sum(sub.values())
-        if total > 0:
-            for fam, frac in sub.items():
-                out[fam] += 0.5 * frac / total
-        # else: this 0.5 slot is unknown and intentionally left out of the sum
+        # Scale each parent slot by 0.5 WITHOUT renormalizing: sub already carries
+        # its own known mass (<= 1.0), so a partially-unknown ancestor propagates
+        # its shortfall upward instead of being inflated to fill the slot.
+        for fam, frac in sub.items():
+            out[fam] += 0.5 * frac
+        # a fully-missing parent contributes nothing -> total stays < 1.0
     return dict(out)
 
 
