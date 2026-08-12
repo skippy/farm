@@ -36,13 +36,17 @@ agriwebb-waddl resolve 0693 7854 ww36 Camas --json      # add --as-of YYYY-MM-DD
 ```
 Each result carries: `id_field` (type verbatim), `taxon` + `breed_id`,
 `sex_code` + `sex_code_id`, `age` + `age_unit` + `age_uom_id`, `health_flag`,
-and `warnings`. **Surface every `warnings` entry to the user before filling** —
-`resolver.py` is the authoritative list, but they cover: not-found (refresh cache
-via `agriwebb-livestock cache --refresh`, then retry, or ask for the full VID/name);
-ambiguous match (a tag matched >1 animal — the on-farm one was chosen, confirm it);
-incomplete pedigree / no pedigree (breed only partially known — confirm); near-tie
-crosses (broke to the dam's breed, or to the named/Finn fallback — confirm); and
-age approximated or unknown (set manually).
+and `warnings`. **Surface every `warnings` entry to the user before filling**
+(`resolver.py` is the authoritative source). They cover:
+- **not found** — refresh cache (`agriwebb-livestock cache --refresh`), retry, or ask for the full VID/name.
+- **ambiguous match** — a tag matched >1 animal; the on-farm one was chosen, confirm it.
+- **off-farm match** — the only match is sold/dead; confirm it's the right animal.
+- **unknown sex** — set it manually.
+- **age approximated / unknown** — from birthYear, or no birth data (set manually).
+- **duplicate in this batch** — the same tag was listed twice.
+- **cross with no pedigree** — defaulted to the label's named breed, else Finn (an *unrecognized* breed says so).
+- **incomplete pedigree** — a parent is off-cache, so breed is only partly known.
+- **near-tie** — broke to the dam's breed, else Finn-if-candidate, else the highest-ranked family.
 
 ### 2. Open the form
 Log in (user does this — never enter credentials). Dashboard → **Full Form**.

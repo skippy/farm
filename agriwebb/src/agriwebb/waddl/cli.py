@@ -59,7 +59,10 @@ def cli(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.command == "resolve":
-        results = resolve(args.tokens, today=_parse_as_of(args.as_of))
+        try:
+            results = resolve(args.tokens, today=_parse_as_of(args.as_of))
+        except FileNotFoundError as e:
+            raise SystemExit(f"error: {e}") from None
         if args.json:
             _print_json(results)
         else:

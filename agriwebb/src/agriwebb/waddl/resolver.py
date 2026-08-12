@@ -14,9 +14,14 @@ Breed for a cross is resolved by walking the pedigree, weighting each parent
 slot equally and tallying base-breed fractions, then taking the dominant family.
 A near-tie (top two families within ``TIE_THRESHOLD``) breaks toward the **dam's
 breed**; if the dam is unknown it breaks to Finn when Finn is a candidate, else
-the highest-ranked candidate (alphabetical among equals). Anything uncertain -
-an incomplete pedigree, a near-tie, an ambiguous or missing match - is flagged
-in ``warnings`` rather than filled silently.
+the highest-ranked candidate (alphabetical among equals).
+
+Anything uncertain is flagged in ``warnings`` rather than filled silently:
+a not-found / ambiguous / off-farm match, an unknown sex, an approximated or
+unknown age, a duplicate token in the batch, and three distinct breed cases -
+a *cross with no pedigree* (defaults to the label's named breed, else Finn), an
+*incomplete pedigree* (a parent off-cache, so breed is only partly known), and a
+*near-tie* between families. Callers must surface every warning before filling.
 """
 
 from __future__ import annotations
@@ -35,6 +40,11 @@ from agriwebb.analysis.lambing.loader import (
     is_on_farm,
 )
 from agriwebb.core.cache import load_cache_json
+
+# Fixed vocabularies, aliased so the dataclass fields and the functions that
+# produce them share one definition and can't drift (keeps ``ty`` honest).
+MatchChannel = Literal["EID last-4", "VID", "name"]
+AgeUnit = Literal["years", "months"]
 
 # --- WADDL taxonomy ---------------------------------------------------------
 TAXON_PREFIX = "mammalia :: bovidae :: ovis :: aries :: Domestic Sheep :: "
@@ -87,7 +97,7 @@ class ResolvedAnimal:
 
     token: str
     found: bool = True
-    matched_by: Literal["EID last-4", "VID", "name"] | None = None
+    matched_by: MatchChannel | None = None
     animal_id: str | None = None
     name: str | None = None
     id_field: str | None = None  # what to type into the portal ID box (== token)
@@ -97,7 +107,7 @@ class ResolvedAnimal:
     sex_code: str | None = None
     sex_code_id: int | None = None
     age: int | None = None
-    age_unit: Literal["years", "months"] | None = None
+    age_unit: AgeUnit | None = None
     age_uom_id: int | None = None
     health_flag: str | None = None  # e.g. "CL+", "Johne's+"
     warnings: list[str] = field(default_factory=list)
@@ -110,7 +120,7 @@ def _identity(animal: dict) -> dict:
     return animal.get("identity") or {}
 
 
-def _candidates(token: str, animals: list[dict]) -> tuple[list[dict], str | None]:
+def _candidates(token: str, animals: list[dict]) -> tuple[list[dict], MatchChannel | None]:
     """All animals matching *token*, and the channel that matched.
 
     Match order: last-4 of EID, then exact VID, then exact name
@@ -123,10 +133,12 @@ def _candidates(token: str, animals: list[dict]) -> tuple[list[dict], str | None
     by_eid = [a for a in animals if (_identity(a).get("eid") or "")[-4:] == token]
     if by_eid:
         return by_eid, "EID last-4"
-    by_vid = [a for a in animals if str(_identity(a).get("vid") or "").lower() == low and _identity(a).get("vid")]
+    # `low` is non-empty (guarded above), so an equality match already implies a
+    # truthy field - no extra `and .get(...)` guard needed.
+    by_vid = [a for a in animals if str(_identity(a).get("vid") or "").lower() == low]
     if by_vid:
         return by_vid, "VID"
-    by_name = [a for a in animals if str(_identity(a).get("name") or "").lower() == low and _identity(a).get("name")]
+    by_name = [a for a in animals if str(_identity(a).get("name") or "").lower() == low]
     if by_name:
         return by_name, "name"
     return [], None
@@ -151,11 +163,13 @@ def resolve_token(
             warnings=["not found in cache (refresh cache, or use full VID/name)"],
         )
 
-    # Prefer an on-farm animal, but flag that more than one matched.
+    # Prefer an on-farm animal, but flag both ambiguity and an off-farm match.
     match = next((a for a in candidates if is_on_farm(a)), candidates[0])
     warnings: list[str] = []
     if len(candidates) > 1:
         warnings.append(f"ambiguous match - {len(candidates)} animals share this {how}, confirm the right one")
+    if not is_on_farm(match):
+        warnings.append("matched animal is not marked on-farm (sold/dead?) - confirm this is the right animal")
 
     ident = _identity(match)
     taxon_suffix, family, breed_id, tax_warn = _taxon(match, by_id)
@@ -193,7 +207,8 @@ def resolve(
     whitespace-insensitive, so ``"0693"`` and ``" 0693 "`` collide).
     """
     animals = load_cache_json("animals.json", key="animals", default=[])
-    by_id = {a["animalId"]: a for a in animals}
+    # Skip malformed records rather than KeyError-ing the whole batch over one.
+    by_id = {aid: a for a in animals if (aid := a.get("animalId"))}
 
     seen: set[str] = set()
     out: list[ResolvedAnimal] = []
@@ -214,7 +229,8 @@ def sex_code(animal: dict) -> tuple[str, int]:
     """Map AgriWebb sex + age class to a WADDL (label, sex_code_id).
 
     A castrated male (``ageClass`` contains 'wether') is Male Neutered (C),
-    even though its ``sex`` is still 'Male'.
+    even though its ``sex`` is still 'Male'. A missing/unrecognized sex returns
+    Unknown (U); ``resolve_token`` warns on that so it is never filled silently.
     """
     if "wether" in get_age_class(animal).lower():
         return SEX_MALE_NEUTERED
@@ -236,7 +252,7 @@ def _birth_date(animal: dict) -> date | None:
     return datetime.fromtimestamp(ms / 1000, tz=UTC).date()
 
 
-def age_fields(animal: dict, today: date) -> tuple[int | None, str | None, int | None, str | None]:
+def age_fields(animal: dict, today: date) -> tuple[int | None, AgeUnit | None, int | None, str | None]:
     """Return (age, unit, age_uom_id, warning).
 
     Whole-number age; months when under 1.5 years old, else years. Falls back
@@ -260,40 +276,42 @@ def age_fields(animal: dict, today: date) -> tuple[int | None, str | None, int |
 # ---------------------------------------------------------------------------
 # Breed / taxon (with pedigree-based cross resolution)
 # ---------------------------------------------------------------------------
+# family -> keywords that identify it in a breed string ("landrace" covers both
+# 'Finnish Landrace' and the cache's 'Finish Landrace' typo). Order = precedence.
+_FAMILY_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "Finn": ("finn", "landrace"),
+    "NCC": ("cheviot",),
+    "BFL": ("bluefaced", "bfl"),
+}
+
+
+def _match_family(breed_lower: str) -> str | None:
+    """First base family whose keyword appears in a lowercased breed string."""
+    return next((fam for fam, kws in _FAMILY_KEYWORDS.items() if any(kw in breed_lower for kw in kws)), None)
+
+
+def _is_cross_label(breed_lower: str) -> bool:
+    """True for the farm's cross notations: '<Breed> X' or anything with 'cross'."""
+    return breed_lower.endswith(" x") or "cross" in breed_lower
+
+
 def base_family(breed: str | None) -> str | None:
     """Map an AgriWebb breed string to a base family, or None if it's a cross.
 
     Returns None for crosses so they route through the pedigree: the farm's
     ``"<Breed> X"`` notation (e.g. 'Bluefaced Leicester X') is a first-cross
     designation, NOT a purebred, and ``"1st Cross"`` etc. are obviously crosses.
-    Handles the cache's 'Finish Landrace' typo.
+    Also returns None for an unrecognized breed (routes through the pedigree).
     """
     if not breed:
         return None
     b = breed.strip().lower()
-    if b.endswith(" x") or "cross" in b:
-        return None  # crossbred -> resolve via pedigree
-    if "finn" in b or "finish landrace" in b or "finnish landrace" in b:
-        return "Finn"
-    if "cheviot" in b:
-        return "NCC"
-    if "bluefaced" in b or "bfl" in b:
-        return "BFL"
-    return None  # unknown -> resolve via pedigree
+    return None if _is_cross_label(b) else _match_family(b)
 
 
 def _named_family(breed: str | None) -> str | None:
     """Family named in a '<Breed> X' cross label (the X ignored) - a hint only."""
-    if not breed:
-        return None
-    b = breed.lower()
-    if "finn" in b or "landrace" in b:
-        return "Finn"
-    if "cheviot" in b:
-        return "NCC"
-    if "bluefaced" in b or "bfl" in b:
-        return "BFL"
-    return None
+    return _match_family(breed.lower()) if breed else None
 
 
 def _composition(animal: dict | None, by_id: dict[str, dict], depth: int = 4) -> dict[str, float]:
@@ -325,28 +343,33 @@ def _composition(animal: dict | None, by_id: dict[str, dict], depth: int = 4) ->
 def _dam_family(animal: dict, by_id: dict[str, dict], depth: int = 4) -> str | None:
     """Dominant base family of the maternal line (recurses if the dam is a cross)."""
     comp = _composition(by_id.get(get_dam_id(animal) or ""), by_id, depth - 1)
-    return max(comp, key=comp.get) if comp else None
+    return max(comp, key=comp.__getitem__) if comp else None
 
 
 def _taxon(animal: dict, by_id: dict[str, dict]) -> tuple[str, str, int, str | None]:
     """Return (taxon_suffix, family, breed_id, warning) for an animal.
 
-    Purebreds map directly. Crosses use the dominant pedigree fraction; a
-    near-tie breaks toward the dam's breed (then Finn, then the highest-ranked
-    candidate). Incomplete pedigrees and near-ties are flagged.
+    Purebreds map directly (via ``_composition``'s ``{fam: 1.0}`` base case).
+    Crosses use the dominant pedigree fraction; a near-tie breaks toward the
+    dam's breed (then Finn, then the highest-ranked candidate). A cross/unmapped
+    breed with no usable pedigree, an incomplete pedigree, and near-ties are all
+    flagged.
     """
-    fam = base_family(get_breed(animal))
-    if fam:
-        suffix, breed_id = FAMILY_TAXON[fam]
-        return suffix, fam, breed_id, None
-
     comp = _composition(animal, by_id)
     if not comp:
-        named = _named_family(get_breed(animal))
+        # No pedigree at all: purebred (single family, 1.0), cross, or unmapped.
+        breed = get_breed(animal)
+        named = _named_family(breed)
         best = named or DEFAULT_FAMILY
         suffix, breed_id = FAMILY_TAXON[best]
-        why = f"used the breed named on the label ({best})" if named else "defaulted to Finn"
-        return suffix, best, breed_id, f"cross with no pedigree - {why}, confirm"
+        b = (breed or "").strip().lower()
+        if named:
+            warn = f"cross with no pedigree - used the breed named on the label ({best}), confirm"
+        elif b and not _is_cross_label(b):
+            warn = f"unrecognized breed '{breed}' with no pedigree - defaulted to Finn, confirm"
+        else:
+            warn = "cross with no pedigree - defaulted to Finn, confirm"
+        return suffix, best, breed_id, warn
 
     # deterministic ranking: highest fraction, then family name
     ranked = sorted(comp.items(), key=lambda kv: (-kv[1], kv[0]))

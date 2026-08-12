@@ -28,7 +28,7 @@ def animal(
     tag: str | None = None,
     sire_id: str | None = None,
     dam_id: str | None = None,
-    on_farm: bool = False,
+    on_farm: bool = True,
 ) -> dict:
     def _parent(pid):
         return [{"parentAnimalId": pid, "parentAnimalIdentity": {}}] if pid else []
@@ -208,6 +208,29 @@ def test_breed_x_suffix_resolves_via_pedigree_not_silently_pure():
     assert r.warnings  # not filled silently
 
 
+def test_breed_x_no_pedigree_ncc_named_fallback():
+    # 'North Country Cheviot X' with no cached pedigree -> named breed NCC, flagged.
+    r = _resolve("X", [animal("X", name="X", breed="North Country Cheviot X", birth=date(2023, 1, 1))])
+    assert r.taxon_family == "NCC"
+    assert any("named on the label" in w for w in r.warnings)
+
+
+def test_unmapped_purebred_warns_unrecognized_not_cross():
+    # A real breed absent from FAMILY_TAXON (e.g. an outside ram) is not a cross;
+    # it should default to Finn but say 'unrecognized breed', not 'cross'.
+    r = _resolve("X", [animal("X", name="X", breed="Suffolk", birth=date(2023, 1, 1))])
+    assert r.taxon_family == "Finn"
+    assert any("unrecognized breed" in w for w in r.warnings)
+    assert not any("cross" in w for w in r.warnings)
+
+
+def test_sole_off_farm_match_is_flagged():
+    # A single match that is not on-farm (sold/dead) must be flagged, not silent.
+    r = _resolve("0693", [animal("A", eid="840000000000693", name="Ghost", on_farm=False, birth=date(2023, 1, 1))])
+    assert r.found and r.animal_id == "A"
+    assert any("on-farm" in w for w in r.warnings)
+
+
 # --- incomplete pedigree (Critical #2) --------------------------------------
 def test_single_missing_parent_flags_incomplete_pedigree():
     # sire known Finn, dam absent from cache -> only ~50% breed mass is known
@@ -249,6 +272,18 @@ def test_tie_dam_unknown_finn_absent_is_deterministic():
     assert any("dam unknown" in w for w in r.warnings)
 
 
+def test_tie_dam_unknown_finn_present_prefers_finn():
+    # Same shape but the sire's cross is Finn/BFL, so Finn IS a tied candidate;
+    # with the dam unknown the fallback must prefer Finn over the alphabetical BFL.
+    gsire = animal("GS", breed="Finnsheep")
+    gdam = animal("GD", breed="Bluefaced Leicester")
+    sire = animal("S", breed="1st Cross", sire_id="GS", dam_id="GD")
+    x = animal("X", name="X", breed="1st Cross", sire_id="S", dam_id="OFFCACHE", birth=date(2023, 1, 1))
+    r = _resolve("X", [x, sire, gsire, gdam])
+    assert r.taxon_family == "Finn"  # Finn-if-candidate wins over alphabetical BFL
+    assert any("dam unknown" in w for w in r.warnings)
+
+
 # --- age boundary + unknown sex + empty token -------------------------------
 def test_age_boundary_just_under_18_months_is_months():
     # ~547 days (< 1.5yr) -> months
@@ -257,8 +292,8 @@ def test_age_boundary_just_under_18_months_is_months():
 
 
 def test_age_boundary_just_over_18_months_is_years():
-    # ~2 years -> years
-    r = _resolve("A", [animal("A", name="A", birth=date(2024, 7, 20))])
+    # ~550 days (just over the 547.875-day / 1.5yr cutoff) -> years
+    r = _resolve("A", [animal("A", name="A", birth=date(2025, 1, 16))])
     assert r.age_unit == "years"
 
 
