@@ -236,3 +236,23 @@ The public GraphQL API does NOT expose: Natural Service, Birth, Death, Lambing,
 Castrate, Wean, Sale, Tag, or Movement records. These are only in the portal UI.
 A Playwright MCP browser integration is configured for portal scraping when needed.
 Session data persists in `~/Library/Caches/ms-playwright/mcp-chrome-profile`.
+
+---
+
+## WADDL Submissions (blood-draw lab autofill)
+
+Fill a WADDL (waddl.labs.tracefirst.com) blood-draw submission from a list of vial
+tags. Resolve per-vial fields (breed/taxon, sex, age) from the cache:
+
+```bash
+agriwebb-waddl resolve 0693 7854 ww36 --json     # last-4 EID / VID / name; --as-of YYYY-MM-DD
+```
+
+**The full browser-driving recipe, portal IDs, and gotchas are in
+[`agriwebb/docs/waddl-submission.md`](agriwebb/docs/waddl-submission.md).**
+Read that before filling a submission. Key points:
+- **Ask the two variable questions first** — collection date(s) and which test(s)
+  (default CL) — and bake them in at add-time; editing rows afterward does not persist.
+- Production portal: fill the draft only, **never** Complete Submission / payment.
+- Resolver logic (breed family, dam's-breed cross tie-break, sex/age rules) lives in
+  `agriwebb/src/agriwebb/waddl/resolver.py`.
