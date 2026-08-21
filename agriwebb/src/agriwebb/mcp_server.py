@@ -14,6 +14,7 @@ Register with Claude Code:
 from __future__ import annotations
 
 import json
+import re
 from datetime import UTC, datetime
 
 from mcp.server.fastmcp import FastMCP
@@ -127,26 +128,8 @@ def _find_portal_records_for_animal(animal_id: str, record_type: str) -> list[di
 
 
 def _find_animal_in_cache(identifier: str, animals: list[dict], by_id: dict[str, dict]) -> dict | None:
-    """Find an animal by name, VID, EID, or animalId (case-insensitive where appropriate)."""
-    # Exact match on animalId
-    if identifier in by_id:
-        return by_id[identifier]
-
-    needle = identifier.strip().lower()
-
-    for a in animals:
-        identity = a.get("identity") or {}
-        # Match by name
-        if (identity.get("name") or "").lower() == needle:
-            return a
-        # Match by VID
-        if (identity.get("vid") or "").lower() == needle:
-            return a
-        # Match by EID
-        if (identity.get("eid") or "").lower() == needle:
-            return a
-
-    return None
+    """Find an animal by animalId, name, VID, EID or unique EID suffix (see ``loader.find_animal``)."""
+    return _load().find_animal(identifier, animals, by_id)
 
 
 def _animal_summary(animal: dict, loader) -> dict:
@@ -692,6 +675,110 @@ async def get_ai_records() -> str:
         )
 
     return json.dumps({"count": len(results), "records": results}, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# Lineage-derived breed purity
+# ---------------------------------------------------------------------------
+
+
+def _founder_registry():
+    """Load the shepherd-maintained founder registry (breed verdicts for root ancestors).
+
+    Kept as a tiny wrapper so tests can patch the registry in one place.
+    """
+    from agriwebb.analysis.lineage.purity import FounderRegistry
+
+    return FounderRegistry.load()
+
+
+_SNAKE = re.compile(r"_([a-z])")
+
+
+def _camel_keys(obj):
+    """Recursively convert snake_case dict keys to camelCase (MCP output convention)."""
+    if isinstance(obj, dict):
+        return {_SNAKE.sub(lambda m: m.group(1).upper(), k): _camel_keys(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_camel_keys(v) for v in obj]
+    return obj
+
+
+@server.tool()
+async def get_breed_purity(animal: str) -> str:
+    """Derive an animal's breed composition and purebred verdict from recorded parentage.
+
+    The AgriWebb breed label is NOT trusted (a predominantly-Finn cross is often
+    labelled "Finish Landrace"). Walks sires/dams back to founder animals whose
+    breed status is asserted in founders.json. Returns composition fractions,
+    purebred (true/false/null), status (verified/mixed/unverified), founders used,
+    unresolved founders (need a verdict) and parentage gaps.
+    """
+    from agriwebb.analysis.lineage.purity import compute_purity
+
+    data = _farm_data()
+    found = _find_animal_in_cache(animal, data.animals, data.by_id)
+    if not found:
+        return json.dumps({"error": f"No animal found matching '{animal}'"})
+    result = compute_purity(found["animalId"], data.by_id, _founder_registry())
+    return json.dumps(_add_warnings(_camel_keys(result.to_dict())), indent=2)
+
+
+@server.tool()
+async def get_purebred_animals(breed: str, year: int | None = None, on_farm_only: bool = True) -> str:
+    """List animals that are purebred for a breed, by lineage (not by label).
+
+    Returns three groups: purebred (verified), unverified (an ancestor founder
+    still lacks a verdict -- see 'needs'), mixed (conclusively crossbred).
+    breed accepts 'Finnish Landrace'/'Finn', 'North Country Cheviot'/'NCC',
+    'Bluefaced Leicester'/'BFL'. Optionally filter by birth year; on-farm only
+    by default.
+    """
+    from agriwebb.analysis.lineage.purity import canonical_breed, find_purebred
+
+    data = _farm_data()
+    res = find_purebred(
+        data.animals, data.by_id, _founder_registry(), breed=breed, year=year, on_farm_only=on_farm_only
+    )
+
+    def _row(r, status):
+        row = {
+            "name": r.name,
+            "animalId": r.animal_id,
+            "label": r.breed_label,
+            "composition": r.rounded_composition,
+        }
+        if status == "unverified":
+            row["needs"] = r.unresolved + r.gaps
+        return row
+
+    out = {
+        "breed": canonical_breed(breed),
+        "year": year,
+        "onFarmOnly": on_farm_only,
+        "counts": {k: len(v) for k, v in res.items()},
+        "purebred": [_row(r, "purebred") for r in res["purebred"]],
+        "unverified": [_row(r, "unverified") for r in res["unverified"]],
+        "mixed": [_row(r, "mixed") for r in res["mixed"]],
+    }
+    return json.dumps(_add_warnings(out), indent=2)
+
+
+@server.tool()
+async def get_unclassified_founders() -> str:
+    """List founder animals that still need a breed verdict from the shepherd.
+
+    Founders are root ancestors: cached animals with no recorded parents, or
+    off-cache parents known only by name/VID. Sorted by number of descendants
+    so the most impactful verdicts come first. Verdicts are recorded by editing
+    founders.json in the agriwebb.analysis.lineage package (see docs/breed-purity.md).
+    """
+    from agriwebb.analysis.lineage.purity import discover_founders
+
+    data = _farm_data()
+    cands = [c for c in discover_founders(data.animals, data.by_id, _founder_registry()) if not c.resolved]
+    out = {"count": len(cands), "founders": [_camel_keys(c.to_dict()) for c in cands]}
+    return json.dumps(_add_warnings(out), indent=2)
 
 
 # ---------------------------------------------------------------------------

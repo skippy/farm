@@ -1,0 +1,488 @@
+{
+  "_comment": "Shepherd-asserted breed status for founder animals (no recorded parents, or off-cache parents referenced only by name/VID). purebred: true | false | null (unclassified). For known crosses you may give 'composition' fractions. 'aliases' are alternate spellings; matching is case/punctuation-insensitive. Edit by hand; see agriwebb/docs/breed-purity.md.",
+  "founders": [
+    {
+      "id": "Conroy",
+      "animalId": null,
+      "aliases": [],
+      "breed": "Finnish Landrace",
+      "purebred": true,
+      "composition": null,
+      "notes": "Registered (registry VID on file in AgriWebb). Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "Delia",
+      "animalId": null,
+      "aliases": [],
+      "breed": "Finnish Landrace",
+      "purebred": true,
+      "composition": null,
+      "notes": "Registered (registry VID on file in AgriWebb). Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "VooDoo",
+      "animalId": null,
+      "aliases": [],
+      "breed": "Finnish Landrace",
+      "purebred": true,
+      "composition": null,
+      "notes": "Registered (registry VID on file in AgriWebb). Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "Debra",
+      "animalId": null,
+      "aliases": [],
+      "breed": "Finnish Landrace",
+      "purebred": true,
+      "composition": null,
+      "notes": "Registered (registry VID on file in AgriWebb). Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "Dube",
+      "animalId": null,
+      "aliases": [],
+      "breed": "Finnish Landrace",
+      "purebred": true,
+      "composition": null,
+      "notes": "Registered (registry VID on file in AgriWebb). Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "Luann",
+      "animalId": null,
+      "aliases": [],
+      "breed": "Finnish Landrace",
+      "purebred": true,
+      "composition": null,
+      "notes": "Registered (registry VID on file in AgriWebb). Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "BLUEMAN",
+      "animalId": null,
+      "aliases": [
+        "Blue Man",
+        "Blueman"
+      ],
+      "breed": "Bluefaced Leicester X",
+      "purebred": false,
+      "composition": null,
+      "notes": "Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "YR2015",
+      "animalId": null,
+      "aliases": [],
+      "breed": "Finnish Landrace",
+      "purebred": true,
+      "composition": null,
+      "notes": "Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "PERSEUS",
+      "animalId": null,
+      "aliases": [],
+      "breed": "North Country Cheviot",
+      "purebred": true,
+      "composition": null,
+      "notes": "Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "ORION",
+      "animalId": null,
+      "aliases": [
+        "Henny 1404",
+        "Orion"
+      ],
+      "breed": "North Country Cheviot",
+      "purebred": true,
+      "composition": null,
+      "notes": "VIDs seen: 'Henny 1404', '1737' (the latter likely a data-entry slip; 1737 = Spartan). Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "PERSEPHONE",
+      "animalId": null,
+      "aliases": [],
+      "breed": "North Country Cheviot",
+      "purebred": true,
+      "composition": null,
+      "notes": "Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "Sansa",
+      "animalId": "ffce197c-3241-4d95-9d0b-bcc3f22af2f9",
+      "aliases": [],
+      "breed": "North Country Cheviot",
+      "purebred": true,
+      "composition": null,
+      "notes": "Cached animal with no recorded parents (born 2017). Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "Rachel",
+      "animalId": null,
+      "aliases": [],
+      "breed": "Finnish Landrace",
+      "purebred": true,
+      "composition": null,
+      "notes": "Registered (registry VID on file in AgriWebb). Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "Lady Jane Jr.",
+      "animalId": "d652c68e-11d9-464d-bdc1-a9f2869e7f13",
+      "aliases": [],
+      "breed": "Bluefaced Leicester X",
+      "purebred": false,
+      "composition": null,
+      "notes": "Cached animal with no recorded parents (born 2018). Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "Spartan",
+      "animalId": null,
+      "aliases": [
+        "1737",
+        "SPARTAN"
+      ],
+      "breed": "North Country Cheviot",
+      "purebred": true,
+      "composition": null,
+      "notes": "VID 1737 also appears as a bare sire name; merged here. Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "APHRODITE",
+      "animalId": null,
+      "aliases": [],
+      "breed": "North Country Cheviot",
+      "purebred": true,
+      "composition": null,
+      "notes": "Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "ATHENA",
+      "animalId": null,
+      "aliases": [],
+      "breed": "North Country Cheviot",
+      "purebred": true,
+      "composition": null,
+      "notes": "Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "NF28",
+      "animalId": null,
+      "aliases": [],
+      "breed": "Bluefaced Leicester X",
+      "purebred": false,
+      "composition": null,
+      "notes": "Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "WW02",
+      "animalId": null,
+      "aliases": [
+        "WW2"
+      ],
+      "breed": "Bluefaced Leicester X",
+      "purebred": false,
+      "composition": null,
+      "notes": "Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "ARMADALE-WINSTON",
+      "animalId": null,
+      "aliases": [],
+      "breed": "North Country Cheviot",
+      "purebred": true,
+      "composition": null,
+      "notes": "NCC AI donor sire. Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "Hermes",
+      "animalId": null,
+      "aliases": [
+        "HERMES",
+        "OKF05"
+      ],
+      "breed": "North Country Cheviot",
+      "purebred": true,
+      "composition": null,
+      "notes": "Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "WW08",
+      "animalId": null,
+      "aliases": [],
+      "breed": "Bluefaced Leicester X",
+      "purebred": false,
+      "composition": null,
+      "notes": "Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "SS Tiger Lily",
+      "animalId": null,
+      "aliases": [],
+      "breed": "North Country Cheviot",
+      "purebred": true,
+      "composition": null,
+      "notes": "Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "CALLA-ANDREW",
+      "animalId": null,
+      "aliases": [],
+      "breed": "North Country Cheviot",
+      "purebred": true,
+      "composition": null,
+      "notes": "NCC AI donor sire. Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "Daphne",
+      "animalId": null,
+      "aliases": [
+        "OKF07"
+      ],
+      "breed": "North Country Cheviot",
+      "purebred": true,
+      "composition": null,
+      "notes": "Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "WW15",
+      "animalId": null,
+      "aliases": [],
+      "breed": "Bluefaced Leicester X",
+      "purebred": false,
+      "composition": null,
+      "notes": "Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "Clay Hill Sire",
+      "animalId": null,
+      "aliases": [],
+      "breed": "North Country Cheviot",
+      "purebred": true,
+      "composition": null,
+      "notes": "Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "WW17",
+      "animalId": null,
+      "aliases": [],
+      "breed": "Bluefaced Leicester X",
+      "purebred": false,
+      "composition": null,
+      "notes": "Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "STANLEE",
+      "animalId": null,
+      "aliases": [
+        "Stan"
+      ],
+      "breed": "Bluefaced Leicester X",
+      "purebred": false,
+      "composition": null,
+      "notes": "Shepherd verdict 2026-08-20 'Stan' merged as alias (same ram)."
+    },
+    {
+      "id": "ACHENTOUL-10097",
+      "animalId": null,
+      "aliases": [
+        "ACHENTOUL"
+      ],
+      "breed": "North Country Cheviot",
+      "purebred": true,
+      "composition": null,
+      "notes": "NCC AI donor sire. Shepherd verdict 2026-08-20 'ACHENTOUL' merged as alias."
+    },
+    {
+      "id": "Speckles",
+      "animalId": null,
+      "aliases": [
+        "SPECKLES"
+      ],
+      "breed": "East Friesian",
+      "purebred": true,
+      "composition": null,
+      "notes": "Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "THISTLE",
+      "animalId": null,
+      "aliases": [
+        "Thistle"
+      ],
+      "breed": "East Friesian",
+      "purebred": true,
+      "composition": null,
+      "notes": "Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "WW10",
+      "animalId": null,
+      "aliases": [],
+      "breed": "Bluefaced Leicester X",
+      "purebred": false,
+      "composition": null,
+      "notes": "Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "NF32",
+      "animalId": null,
+      "aliases": [],
+      "breed": "Bluefaced Leicester X",
+      "purebred": false,
+      "composition": null,
+      "notes": "Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "WW24",
+      "animalId": null,
+      "aliases": [],
+      "breed": "Bluefaced Leicester X",
+      "purebred": false,
+      "composition": null,
+      "notes": "Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "High Road Sire",
+      "animalId": null,
+      "aliases": [],
+      "breed": "North Country Cheviot",
+      "purebred": true,
+      "composition": null,
+      "notes": "Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "Olivia",
+      "animalId": null,
+      "aliases": [],
+      "breed": "Bluefaced Leicester X",
+      "purebred": false,
+      "composition": null,
+      "notes": "Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "Coop",
+      "animalId": null,
+      "aliases": [],
+      "breed": "Bluefaced Leicester X",
+      "purebred": false,
+      "composition": null,
+      "notes": "Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "WW18",
+      "animalId": null,
+      "aliases": [],
+      "breed": "Bluefaced Leicester X",
+      "purebred": false,
+      "composition": null,
+      "notes": "Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "Artemis",
+      "animalId": null,
+      "aliases": [],
+      "breed": "North Country Cheviot",
+      "purebred": true,
+      "composition": null,
+      "notes": "Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "WW04",
+      "animalId": null,
+      "aliases": [],
+      "breed": "Bluefaced Leicester X",
+      "purebred": false,
+      "composition": null,
+      "notes": "Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "840003218100590",
+      "animalId": "a50f14f8-fdfb-4b12-8303-222720b15885",
+      "aliases": [],
+      "breed": "1st Cross",
+      "purebred": false,
+      "composition": null,
+      "notes": "Cached animal with no recorded parents (born 2020). Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "840003218100591",
+      "animalId": "c5bdbf4e-a21f-4a7b-a07e-af9a5afffb48",
+      "aliases": [],
+      "breed": "1st Cross",
+      "purebred": false,
+      "composition": null,
+      "notes": "Cached animal with no recorded parents (born 2020). Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "840003218100592",
+      "animalId": "b62d65e4-bf32-4dae-8b85-08e594c1ebe2",
+      "aliases": [],
+      "breed": "1st Cross",
+      "purebred": false,
+      "composition": null,
+      "notes": "Cached animal with no recorded parents (born 2020). Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "840003218100593",
+      "animalId": "00446586-4252-43d2-9c9e-d7822d7ca711",
+      "aliases": [],
+      "breed": "1st Cross",
+      "purebred": false,
+      "composition": null,
+      "notes": "Cached animal with no recorded parents (born 2020). Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "840003234886954",
+      "animalId": "befbba7f-f476-468d-ac51-3170912393b7",
+      "aliases": [],
+      "breed": "1st Cross",
+      "purebred": false,
+      "composition": null,
+      "notes": "Cached animal with no recorded parents (born 2021). Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "840003234886977",
+      "animalId": "ec74a8e9-64a6-4fe2-a8eb-10965b1b810b",
+      "aliases": [],
+      "breed": "1st Cross",
+      "purebred": false,
+      "composition": null,
+      "notes": "Cached animal with no recorded parents (born 2021). Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "Chervil",
+      "animalId": "bdf2a21a-f7bb-40ef-9242-8d15281f6e96",
+      "aliases": [],
+      "breed": "Finnish Landrace",
+      "purebred": true,
+      "composition": null,
+      "notes": "Cached animal with no recorded parents (born 2019). Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "Limerick",
+      "animalId": "7fede4cf-c443-4c59-b70a-abe188921e2b",
+      "aliases": [],
+      "breed": "Finnish Landrace",
+      "purebred": true,
+      "composition": null,
+      "notes": "Cached animal with no recorded parents (born 2021). Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "Puffy Pillow",
+      "animalId": "191cd93b-8645-42a2-b79b-2d8e3e53fbbd",
+      "aliases": [],
+      "breed": "Bluefaced Leicester X",
+      "purebred": false,
+      "composition": null,
+      "notes": "Cached animal with no recorded parents (born 2017). Shepherd verdict 2026-08-20"
+    },
+    {
+      "id": "Tarragon",
+      "animalId": "0ddeb5a5-e6da-41c4-be3c-0f196b112b1a",
+      "aliases": [],
+      "breed": "Finnish Landrace",
+      "purebred": true,
+      "composition": null,
+      "notes": "Cached animal with no recorded parents (born 2019). Shepherd verdict 2026-08-20"
+    }
+  ]
+}
