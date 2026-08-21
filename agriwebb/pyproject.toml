@@ -25,6 +25,7 @@ agriwebb-pasture = "agriwebb.pasture.cli:cli"
 agriwebb-mcp = "agriwebb.mcp_server:main"
 agriwebb-lambing = "agriwebb.analysis.lambing.cli:cli"
 agriwebb-waddl = "agriwebb.waddl.cli:cli"
+agriwebb-lineage = "agriwebb.analysis.lineage.cli:cli"
 
 [dependency-groups]
 dev = [
@@ -38,6 +39,9 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+agriwebb = ["analysis/lineage/founders.json"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

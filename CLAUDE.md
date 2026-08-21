@@ -20,15 +20,17 @@ farm/
 ├── agriwebb/                      # AgriWebb integration package
 │   ├── src/agriwebb/
 │   │   ├── analysis/lambing/      # Lambing analysis (loader, reports)
+│   │   ├── analysis/lineage/      # Breed purity from parentage + founders.json registry
 │   │   ├── core/                  # Shared utilities (cache, config, timestamps)
 │   │   ├── data/                  # Livestock, soils, grazing data
 │   │   ├── pasture/               # Growth models, biomass, SDM
 │   │   ├── satellite/             # GEE NDVI, NLCD, moss detection
 │   │   ├── sync/                  # Push data to AgriWebb
 │   │   ├── weather/               # NOAA, Open-Meteo, rainfall
-│   │   └── mcp_server.py          # MCP server (10 livestock analysis tools)
+│   │   └── mcp_server.py          # MCP server (livestock analysis tools)
 │   ├── docs/
 │   │   ├── lambing-analysis.md    # Full lambing conventions & methodology
+│   │   ├── breed-purity.md        # Lineage-derived purity, founders.json workflow
 │   │   └── pasture-biomass.md     # SDM pipeline design, SNAP NN research, calibration plan
 │   └── tests/
 └── CLAUDE.md                      # This file
@@ -116,6 +118,9 @@ Provides livestock analysis tools that operate on cached data (no API calls):
 - `get_notes(animal)` — clinical notes from portal data
 - `get_death_details(animal)` — loss reason/details from portal death records
 - `get_ai_records()` — artificial insemination records with donor sire details
+- `get_breed_purity(animal)` — lineage-derived breed composition + purebred verdict (label not trusted)
+- `get_purebred_animals(breed, year?, on_farm_only?)` — purebred / unverified / mixed lists by lineage
+- `get_unclassified_founders()` — root ancestors still needing a breed verdict in founders.json
 
 Registered as: `claude mcp add agriwebb -- uv run --project agriwebb python -m agriwebb.mcp_server`
 
@@ -129,6 +134,13 @@ agriwebb-lambing season                 # Lambing dashboard (current year)
 agriwebb-lambing season --year 2025     # Historical
 agriwebb-lambing losses                 # Loss breakdown by category
 agriwebb-lambing losses --json          # Structured output
+```
+
+### Lineage / Breed Purity CLI
+```bash
+agriwebb-lineage founders               # Founders still needing a breed verdict
+agriwebb-lineage purity Bocce           # Composition + purebred verdict for one animal
+agriwebb-lineage purebred Finn --year 2025   # Purebred / unverified / mixed by lineage
 ```
 
 ## Local Data Analysis
@@ -230,6 +242,15 @@ Key non-negotiable conventions (summary — see the doc for detail):
 - Lambing rate = live lambs / ewes; losses tracked separately, never blended
 - Classify losses by mechanism (prenatal/intrapartum/perinatal/early/late), not as generic "stillborn"
 - Use respectful language about all animals
+
+### Breed purity (purebred vs. predominantly-Finn crosses)
+AgriWebb's breed list is fixed (no custom breeds, no "Finnish Landrace X"), so the
+"Finish Landrace" label is also used for Finn-dominant crosses. **Never answer
+"purebred?" from the label** — use lineage via `agriwebb-lineage` /
+`get_breed_purity` / `get_purebred_animals`. Founder verdicts live in
+`agriwebb/src/agriwebb/analysis/lineage/founders.json`; unresolved founders
+must be classified by the shepherd (`agriwebb-lineage founders`). Design and
+workflow: [`agriwebb/docs/breed-purity.md`](agriwebb/docs/breed-purity.md).
 
 ### AgriWebb API gaps
 The public GraphQL API does NOT expose: Natural Service, Birth, Death, Lambing,

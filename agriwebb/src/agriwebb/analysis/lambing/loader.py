@@ -93,6 +93,33 @@ def get_name(animal: dict) -> str:
     return identity.get("name") or identity.get("vid") or identity.get("eid") or animal.get("animalId", "?")[:8]
 
 
+def find_animal(identifier: str, animals: list[dict], by_id: dict[str, dict]) -> dict | None:
+    """Find an animal by animalId, then exact name/VID/EID (case-insensitive), then unique EID suffix.
+
+    Shared by the MCP server and CLIs.  A purely numeric identifier that matches
+    no exact field resolves by EID suffix only when exactly one animal matches
+    (e.g. the last 4 digits written on a vial or tag).
+    """
+    if identifier in by_id:
+        return by_id[identifier]
+    needle = identifier.strip().lower()
+    if not needle:
+        return None
+    for a in animals:
+        identity = a.get("identity") or {}
+        if needle in {
+            (identity.get("name") or "").lower(),
+            (identity.get("vid") or "").lower(),
+            (identity.get("eid") or "").lower(),
+        }:
+            return a
+    if needle.isdigit():
+        hits = [a for a in animals if ((a.get("identity") or {}).get("eid") or "").endswith(needle)]
+        if len(hits) == 1:
+            return hits[0]
+    return None
+
+
 def get_breed(animal: dict) -> str:
     """Return ``characteristics.breedAssessed`` or ``'?'``."""
     return (animal.get("characteristics") or {}).get("breedAssessed") or "?"
