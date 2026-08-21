@@ -20,15 +20,17 @@ farm/
 ├── agriwebb/                      # AgriWebb integration package
 │   ├── src/agriwebb/
 │   │   ├── analysis/lambing/      # Lambing analysis (loader, reports)
+│   │   ├── analysis/lineage/      # Breed purity from parentage + founders.json registry
 │   │   ├── core/                  # Shared utilities (cache, config, timestamps)
 │   │   ├── data/                  # Livestock, soils, grazing data
 │   │   ├── pasture/               # Growth models, biomass, SDM
 │   │   ├── satellite/             # GEE NDVI, NLCD, moss detection
 │   │   ├── sync/                  # Push data to AgriWebb
 │   │   ├── weather/               # NOAA, Open-Meteo, rainfall
-│   │   └── mcp_server.py          # MCP server (10 livestock analysis tools)
+│   │   └── mcp_server.py          # MCP server (livestock analysis tools)
 │   ├── docs/
 │   │   ├── lambing-analysis.md    # Full lambing conventions & methodology
+│   │   ├── breed-purity.md        # Lineage-derived purity, founders.json workflow
 │   │   └── pasture-biomass.md     # SDM pipeline design, SNAP NN research, calibration plan
 │   └── tests/
 └── CLAUDE.md                      # This file
@@ -116,6 +118,9 @@ Provides livestock analysis tools that operate on cached data (no API calls):
 - `get_notes(animal)` — clinical notes from portal data
 - `get_death_details(animal)` — loss reason/details from portal death records
 - `get_ai_records()` — artificial insemination records with donor sire details
+- `get_breed_purity(animal)` — lineage-derived breed composition + purebred verdict (label not trusted)
+- `get_purebred_animals(breed, year?, on_farm_only?)` — purebred / unverified / mixed lists by lineage
+- `get_unclassified_founders()` — root ancestors still needing a breed verdict in founders.json
 
 Registered as: `claude mcp add agriwebb -- uv run --project agriwebb python -m agriwebb.mcp_server`
 
@@ -129,6 +134,13 @@ agriwebb-lambing season                 # Lambing dashboard (current year)
 agriwebb-lambing season --year 2025     # Historical
 agriwebb-lambing losses                 # Loss breakdown by category
 agriwebb-lambing losses --json          # Structured output
+```
+
+### Lineage / Breed Purity CLI
+```bash
+agriwebb-lineage founders               # Founders still needing a breed verdict
+agriwebb-lineage purity Bocce           # Composition + purebred verdict for one animal
+agriwebb-lineage purebred Finn --year 2025   # Purebred / unverified / mixed by lineage
 ```
 
 ## Local Data Analysis
@@ -231,8 +243,37 @@ Key non-negotiable conventions (summary — see the doc for detail):
 - Classify losses by mechanism (prenatal/intrapartum/perinatal/early/late), not as generic "stillborn"
 - Use respectful language about all animals
 
+### Breed purity (purebred vs. predominantly-Finn crosses)
+AgriWebb's breed list is fixed (no custom breeds, no "Finnish Landrace X"), so the
+"Finish Landrace" label is also used for Finn-dominant crosses. **Never answer
+"purebred?" from the label** — use lineage via `agriwebb-lineage` /
+`get_breed_purity` / `get_purebred_animals`. Founder verdicts live in
+`agriwebb/src/agriwebb/analysis/lineage/founders.json`; unresolved founders
+must be classified by the shepherd (`agriwebb-lineage founders`). Design and
+workflow: [`agriwebb/docs/breed-purity.md`](agriwebb/docs/breed-purity.md).
+
 ### AgriWebb API gaps
 The public GraphQL API does NOT expose: Natural Service, Birth, Death, Lambing,
 Castrate, Wean, Sale, Tag, or Movement records. These are only in the portal UI.
 A Playwright MCP browser integration is configured for portal scraping when needed.
 Session data persists in `~/Library/Caches/ms-playwright/mcp-chrome-profile`.
+
+---
+
+## WADDL Submissions (blood-draw lab autofill)
+
+Fill a WADDL (waddl.labs.tracefirst.com) blood-draw submission from a list of vial
+tags. Resolve per-vial fields (breed/taxon, sex, age) from the cache:
+
+```bash
+agriwebb-waddl resolve 0693 7854 ww36 --json     # last-4 EID / VID / name; --as-of YYYY-MM-DD
+```
+
+**The full browser-driving recipe, portal IDs, and gotchas are in
+[`agriwebb/docs/waddl-submission.md`](agriwebb/docs/waddl-submission.md).**
+Read that before filling a submission. Key points:
+- **Ask the two variable questions first** — collection date(s) and which test(s)
+  (default CL) — and bake them in at add-time; editing rows afterward does not persist.
+- Production portal: fill the draft only, **never** Complete Submission / payment.
+- Resolver logic (breed family, dam's-breed cross tie-break, sex/age rules) lives in
+  `agriwebb/src/agriwebb/waddl/resolver.py`.
