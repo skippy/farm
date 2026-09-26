@@ -1,25 +1,26 @@
-"""Weigh sessions: parse a handwritten tag/weight sheet and push it to AgriWebb.
+"""Weigh sessions: resolve (tag, weight) pairs and push them to AgriWebb.
 
-A sheet is one line per animal, ``<tag> <weight>``, where the tag is whatever
-was written in the yard - last 4 of the EID, last 4 of the VID, a full VID, or
-a name - and punctuation/units are tolerated (``6055: 45 lbs``). Lines starting
-with ``#`` are ignored, so crossed-out entries can be kept as comments.
+There is no sheet format or CLI - weigh sheets are rare and handwritten, so
+Claude transcribes them and calls these helpers directly:
 
-Tags resolve against the local cache (``animals.json``) with the same matcher
-the WADDL resolver uses. Anything unresolved, ambiguous, off-farm, or repeated
-blocks the push - AgriWebb's API cannot delete records, so a wrong weight has
-to be fixed by hand in the portal.
+    entries = resolve_weights([("6055", 45), ...], animals)   # flag doubtful tags
+    format_preview(entries)                                   # show prev weight / gain
+    await find_existing_weighs([e.animal_id for e in entries], observed_at)  # must be empty
+    session = await push_weigh_session(build_weigh_input(entries, observed_at))
+    await get_weights(session_id=session)                     # confirm the count
 
-The push is one ``addRecords`` call (one AgriWebb session). It deliberately
-does **not** retry: a timeout after the server committed would duplicate every
-record. Before pushing, each animal is checked live for an existing weigh
-record on the same day, so re-running a sheet is refused rather than doubled.
+Tags are whatever was written in the yard - last 4 of the EID, a VID, last 4
+of the VID, or a name - matched with the WADDL resolver's matcher. Anything
+unresolved, ambiguous, off-farm, or repeated blocks the push: AgriWebb's API
+cannot delete records, so a wrong weight has to be fixed by hand in the portal.
+
+The push is one ``addRecords`` call (one AgriWebb session) and deliberately does
+**not** retry: a timeout after the server committed would duplicate every record.
 """
 
 from __future__ import annotations
 
 import asyncio
-import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
@@ -43,16 +44,10 @@ mutation AddRecords($input: AddRecordsInput!) {
 }
 """
 
-_LINE = re.compile(r"^\s*([A-Za-z0-9][\w-]*)\s*[:;,=]*\s*(\d+(?:\.\d+)?)\s*(?:lbs?|kgs?)?\.?\s*$", re.IGNORECASE)
-
-
-class SheetError(ValueError):
-    """A sheet line that can't be parsed as ``<tag> <weight>``."""
-
 
 @dataclass
 class WeighEntry:
-    """One sheet line, resolved against the cache."""
+    """One (tag, weight) pair, resolved against the cache."""
 
     token: str
     weight: float
@@ -81,20 +76,6 @@ class WeighEntry:
         return self.animal is not None and not self.warnings
 
 
-def parse_sheet(text: str) -> list[tuple[str, float]]:
-    """Parse ``<tag> <weight>`` lines; blank lines and ``#`` comments are skipped."""
-    rows = []
-    for n, raw in enumerate(text.splitlines(), 1):
-        line = raw.split("#", 1)[0].strip()
-        if not line:
-            continue
-        m = _LINE.match(line)
-        if not m:
-            raise SheetError(f"line {n}: can't read {raw.strip()!r} (expected '<tag> <weight>')")
-        rows.append((m.group(1), float(m.group(2))))
-    return rows
-
-
 def _last_weigh(animal: dict, unit: str) -> tuple[float | None, datetime | None]:
     weighs = [
         r
@@ -107,8 +88,8 @@ def _last_weigh(animal: dict, unit: str) -> tuple[float | None, datetime | None]
     return last["weight"]["value"], datetime.fromtimestamp(last["observationDate"] / 1000)
 
 
-def resolve_sheet(rows: list[tuple[str, float]], animals: list[dict], unit: str = "lb") -> list[WeighEntry]:
-    """Match each sheet row to exactly one on-farm animal, flagging anything doubtful."""
+def resolve_weights(rows: list[tuple[str, float]], animals: list[dict], unit: str = "lb") -> list[WeighEntry]:
+    """Match each (tag, weight) pair to exactly one on-farm animal, flagging anything doubtful."""
     entries: list[WeighEntry] = []
     seen: dict[str, str] = {}
     for token, weight in rows:
@@ -128,7 +109,7 @@ def resolve_sheet(rows: list[tuple[str, float]], animals: list[dict], unit: str 
         if entry.animal:
             aid = entry.animal["animalId"]
             if aid in seen:
-                entry.warnings.append(f"same animal as tag {seen[aid]} earlier in the sheet")
+                entry.warnings.append(f"same animal as tag {seen[aid]} earlier in this session")
             seen.setdefault(aid, token)
             entry.prev_weight, entry.prev_date = _last_weigh(entry.animal, unit)
         entries.append(entry)

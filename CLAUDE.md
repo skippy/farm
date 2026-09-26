@@ -46,14 +46,13 @@ agriwebb-livestock get X                   # Look up animal by name/ID/EID/VID
 agriwebb-livestock lineage X --generations 3
 agriwebb-livestock offspring X
 agriwebb-livestock summary                 # Herd summary by species/breed/status
-agriwebb-livestock weigh sheet.txt --date 2026-09-25 --dry-run   # Preview a weigh sheet
-agriwebb-livestock weigh sheet.txt --date 2026-09-25             # Push it as one weigh session
 ```
 
-Weigh sheets are one `<tag> <weight>` per line (`6055: 45 lbs` is fine; `#` comments out a
-crossed-out line). Tags resolve like WADDL vials: EID last-4, VID, VID last-4 (lambs' `26055`
-is called `6055`), or name. The push refuses unresolved/ambiguous/duplicate tags and any
-animal already weighed that day. It does not retry, because the API can't delete records.
+**Weigh sheets** (handwritten photos, rare): transcribe them, then use the helpers in
+`agriwebb/src/agriwebb/data/weigh.py` (usage in its docstring). Tags resolve like WADDL
+vials: EID last-4, VID, VID last-4 (lambs' `26055` is called `6055`), or name. Show the
+user the preview and get confirmation before pushing. The API can't delete records, and the
+push does not retry.
 
 ### Weather / Rainfall
 ```bash
