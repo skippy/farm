@@ -72,6 +72,19 @@ def test_matches_name():
     assert _resolve("camas", [a]).matched_by == "name"
 
 
+def test_matches_vid_last_four():
+    a = animal("A", vid="26055", name="Bruno Mars")
+    r = _resolve("6055", [a])
+    assert r.matched_by == "VID last-4"
+    assert r.animal_id == "A"
+
+
+def test_exact_vid_beats_vid_last_four():
+    exact = animal("A", vid="6055")
+    suffix = animal("B", vid="26055")
+    assert _resolve("6055", [exact, suffix]).animal_id == "A"
+
+
 def test_eid_last_four_beats_vid_and_name():
     target = animal("A", eid="840000000000693")
     other = animal("B", vid="0693")

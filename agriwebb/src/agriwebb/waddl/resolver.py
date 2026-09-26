@@ -1,7 +1,7 @@
 """Resolve vial tokens into WADDL per-animal submission fields.
 
 A vial is identified on the farm by the **last 4 digits of its EID**, or
-sometimes a VID or a name when the tag is missing/unreadable. This module maps
+sometimes a VID (full or last 4) or a name when the tag is missing/unreadable. This module maps
 each token to an animal in the local cache and derives the four fields the WADDL
 "Animals" step needs:
 
@@ -43,7 +43,7 @@ from agriwebb.core.cache import load_cache_json
 
 # Fixed vocabularies, aliased so the dataclass fields and the functions that
 # produce them share one definition and can't drift (keeps ``ty`` honest).
-MatchChannel = Literal["EID last-4", "VID", "name"]
+MatchChannel = Literal["EID last-4", "VID", "VID last-4", "name"]
 AgeUnit = Literal["years", "months"]
 
 # --- WADDL taxonomy ---------------------------------------------------------
@@ -120,10 +120,11 @@ def _identity(animal: dict) -> dict:
     return animal.get("identity") or {}
 
 
-def _candidates(token: str, animals: list[dict]) -> tuple[list[dict], MatchChannel | None]:
+def match_candidates(token: str, animals: list[dict]) -> tuple[list[dict], MatchChannel | None]:
     """All animals matching *token*, and the channel that matched.
 
-    Match order: last-4 of EID, then exact VID, then exact name
+    Match order: last-4 of EID, then exact VID, then last-4 of VID (lambs
+    carry VIDs like ``26055`` and are called by ``6055``), then exact name
     (case-insensitive for VID/name). Returns every candidate on the winning
     channel so the caller can flag ambiguity.
     """
@@ -138,6 +139,10 @@ def _candidates(token: str, animals: list[dict]) -> tuple[list[dict], MatchChann
     by_vid = [a for a in animals if str(_identity(a).get("vid") or "").lower() == low]
     if by_vid:
         return by_vid, "VID"
+    if len(token) == 4:
+        by_vid4 = [a for a in animals if len(vid := str(_identity(a).get("vid") or "")) > 4 and vid[-4:].lower() == low]
+        if by_vid4:
+            return by_vid4, "VID last-4"
     by_name = [a for a in animals if str(_identity(a).get("name") or "").lower() == low]
     if by_name:
         return by_name, "name"
@@ -154,7 +159,7 @@ def resolve_token(
     today = today or datetime.now(UTC).date()
     tok = token.strip()
 
-    candidates, how = _candidates(tok, animals)
+    candidates, how = match_candidates(tok, animals)
     if not candidates:
         return ResolvedAnimal(
             token=tok,

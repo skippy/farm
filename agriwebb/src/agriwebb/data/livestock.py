@@ -647,44 +647,64 @@ async def get_mobs() -> list[dict]:
     ]
 
 
+WEIGHTS_QUERY = """
+query GetWeights($options: RecordQueryOptions!) {
+  records(options: $options) {
+    recordId
+    observationDate
+    sessionId
+    ... on WeighRecord {
+      animalId
+      weight { value unit }
+      weighEvent
+    }
+  }
+}
+"""
+
+
 async def get_weights(
     animal_id: str | None = None,
-    start_date: str | None = None,
-    end_date: str | None = None,
+    session_id: str | None = None,
+    start: datetime | None = None,
+    end: datetime | None = None,
 ) -> list[dict]:
     """
-    Fetch weight records.
+    Fetch weigh records for one animal or one weigh session.
+
+    The API refuses farm-wide record queries, so one of ``animal_id`` or
+    ``session_id`` is required.
 
     Args:
-        animal_id: Filter to specific animal (optional)
-        start_date: Filter from date (ISO format)
-        end_date: Filter to date (ISO format)
+        animal_id: Animal to fetch weights for
+        session_id: Weigh session (from ``addRecords``) to fetch
+        start: Only records observed at or after this time
+        end: Only records observed before this time
 
     Returns:
-        List of weight records
+        Weigh records, oldest first
     """
-    farm_id = settings.agriwebb_farm_id
+    if not (animal_id or session_id):
+        raise ValueError("get_weights needs animal_id or session_id")
 
-    filters = []
+    record_filter: dict = {"recordType": {"_eq": "weigh"}}
+    date_filter = {}
+    if start:
+        date_filter["_gte"] = int(start.timestamp() * 1000)
+    if end:
+        date_filter["_lt"] = int(end.timestamp() * 1000)
+    if date_filter:
+        record_filter["observationDate"] = date_filter
+
+    options: dict = {"farmId": settings.agriwebb_farm_id, "filter": record_filter}
     if animal_id:
-        filters.append(f'animalId: {{ _eq: "{animal_id}" }}')
+        options["animalId"] = animal_id
+    if session_id:
+        options["sessionId"] = session_id
 
-    filter_str = f", filter: {{ {', '.join(filters)} }}" if filters else ""
-
-    query = f"""
-    {{
-      weightRecords(farmId: "{farm_id}"{filter_str}) {{
-        id
-        recordedAt
-        weight
-        weightUnit
-        animalId
-      }}
-    }}
-    """
-    result = await graphql_with_retry(query)
-
-    return result.get("data", {}).get("weightRecords", [])
+    result = await graphql_with_retry(WEIGHTS_QUERY, {"options": options})
+    records = result.get("data", {}).get("records") or []
+    return sorted(records, key=lambda r: r["observationDate"])
 
 
 async def get_treatments(
@@ -1145,6 +1165,15 @@ async def cli_main() -> None:
     cache_parser.add_argument("--output", "-o", type=str, help="Output file path")
     cache_parser.add_argument("--refresh", action="store_true", help="Force full re-fetch, ignoring cache age")
 
+    # weigh command - push a handwritten tag/weight sheet as one weigh session
+    weigh_parser = subparsers.add_parser("weigh", help="Record a weigh session from a '<tag> <weight>' sheet")
+    weigh_parser.add_argument("sheet", help="File with one '<tag> <weight>' per line ('-' for stdin)")
+    weigh_parser.add_argument("--date", required=True, help="Weigh date, YYYY-MM-DD (local)")
+    weigh_parser.add_argument("--time", default="12:00", help="Weigh time, HH:MM local (default 12:00)")
+    weigh_parser.add_argument("--unit", choices=["lb", "kg"], default="lb")
+    weigh_parser.add_argument("--event", default="Check", help="AgriWebb weigh event (default Check)")
+    weigh_parser.add_argument("--dry-run", action="store_true", help="Resolve and preview only; don't push")
+
     args = parser.parse_args()
 
     if args.command == "list":
@@ -1258,8 +1287,47 @@ async def cli_main() -> None:
 
         await cache_all_animals(output_path, on_progress=print)
 
+    elif args.command == "weigh":
+        await _weigh_cli(args)
+
     else:
         parser.print_help()
+
+
+async def _weigh_cli(args) -> None:
+    """Resolve a weigh sheet, preview it, refuse duplicates, then push."""
+    import sys
+
+    from agriwebb.core.cache import load_cache_json
+    from agriwebb.data import weigh
+
+    text = sys.stdin.read() if args.sheet == "-" else Path(args.sheet).read_text()
+    observed_at = datetime.fromisoformat(f"{args.date}T{args.time}")
+    animals = load_cache_json(DEFAULT_CACHE_FILE, key="animals")
+    entries = weigh.resolve_sheet(weigh.parse_sheet(text), animals, unit=args.unit)
+
+    print(weigh.format_preview(entries))
+    print(f"\n{len(entries)} weights, {observed_at:%Y-%m-%d %H:%M}, event={args.event}, unit={args.unit}")
+
+    if flagged := [e for e in entries if not e.ok]:
+        sys.exit(f"\n{len(flagged)} entries need fixing before this can be pushed (see notes).")
+
+    existing = await weigh.find_existing_weighs([e.animal_id for e in entries], observed_at)
+    if existing:
+        names = ", ".join(e.name for e in entries if e.animal_id in existing)
+        sys.exit(f"\nAlready weighed on {observed_at:%Y-%m-%d} in AgriWebb: {names}. Not pushing.")
+
+    if args.dry_run:
+        print("Dry run - nothing pushed.")
+        return
+
+    weigh_input = weigh.build_weigh_input(entries, observed_at, unit=args.unit, weigh_event=args.event)
+    session_id = await weigh.push_weigh_session(weigh_input)
+    pushed = await get_weights(session_id=session_id)
+    print(f"Pushed session {session_id}: {len(pushed)}/{len(entries)} records confirmed in AgriWebb.")
+    if len(pushed) != len(entries):
+        sys.exit("Record count mismatch - check the session in the AgriWebb portal before re-running.")
+    print("Run `agriwebb-livestock cache --refresh` to pull the new weights into animals.json.")
 
 
 def cli() -> None:
