@@ -48,6 +48,12 @@ agriwebb-livestock offspring X
 agriwebb-livestock summary                 # Herd summary by species/breed/status
 ```
 
+**Weigh sheets** (handwritten photos, rare): transcribe them, then use the helpers in
+`agriwebb/src/agriwebb/data/weigh.py` (usage in its docstring). Tags resolve like WADDL
+vials: EID last-4, VID, VID last-4 (lambs' `26055` is called `6055`), or name. Show the
+user the preview and get confirmation before pushing. The API can't delete records, and the
+push does not retry.
+
 ### Weather / Rainfall
 ```bash
 agriwebb-weather sync                  # Sync rainfall (NOAA + Open-Meteo for real-time)

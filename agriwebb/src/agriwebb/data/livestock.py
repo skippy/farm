@@ -647,44 +647,64 @@ async def get_mobs() -> list[dict]:
     ]
 
 
+WEIGHTS_QUERY = """
+query GetWeights($options: RecordQueryOptions!) {
+  records(options: $options) {
+    recordId
+    observationDate
+    sessionId
+    ... on WeighRecord {
+      animalId
+      weight { value unit }
+      weighEvent
+    }
+  }
+}
+"""
+
+
 async def get_weights(
     animal_id: str | None = None,
-    start_date: str | None = None,
-    end_date: str | None = None,
+    session_id: str | None = None,
+    start: datetime | None = None,
+    end: datetime | None = None,
 ) -> list[dict]:
     """
-    Fetch weight records.
+    Fetch weigh records for one animal or one weigh session.
+
+    The API refuses farm-wide record queries, so one of ``animal_id`` or
+    ``session_id`` is required.
 
     Args:
-        animal_id: Filter to specific animal (optional)
-        start_date: Filter from date (ISO format)
-        end_date: Filter to date (ISO format)
+        animal_id: Animal to fetch weights for
+        session_id: Weigh session (from ``addRecords``) to fetch
+        start: Only records observed at or after this time
+        end: Only records observed before this time
 
     Returns:
-        List of weight records
+        Weigh records, oldest first
     """
-    farm_id = settings.agriwebb_farm_id
+    if not (animal_id or session_id):
+        raise ValueError("get_weights needs animal_id or session_id")
 
-    filters = []
+    record_filter: dict = {"recordType": {"_eq": "weigh"}}
+    date_filter = {}
+    if start:
+        date_filter["_gte"] = int(start.timestamp() * 1000)
+    if end:
+        date_filter["_lt"] = int(end.timestamp() * 1000)
+    if date_filter:
+        record_filter["observationDate"] = date_filter
+
+    options: dict = {"farmId": settings.agriwebb_farm_id, "filter": record_filter}
     if animal_id:
-        filters.append(f'animalId: {{ _eq: "{animal_id}" }}')
+        options["animalId"] = animal_id
+    if session_id:
+        options["sessionId"] = session_id
 
-    filter_str = f", filter: {{ {', '.join(filters)} }}" if filters else ""
-
-    query = f"""
-    {{
-      weightRecords(farmId: "{farm_id}"{filter_str}) {{
-        id
-        recordedAt
-        weight
-        weightUnit
-        animalId
-      }}
-    }}
-    """
-    result = await graphql_with_retry(query)
-
-    return result.get("data", {}).get("weightRecords", [])
+    result = await graphql_with_retry(WEIGHTS_QUERY, {"options": options})
+    records = result.get("data", {}).get("records") or []
+    return sorted(records, key=lambda r: r["observationDate"])
 
 
 async def get_treatments(
