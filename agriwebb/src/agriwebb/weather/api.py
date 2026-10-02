@@ -43,12 +43,15 @@ mutation AddRainfall($farmId: String!, $sensorId: String!, $value: Float!, $time
 }
 """
 
+# AgriWebb returns at most 500 rainfall records per query, even with a larger limit.
+RAINFALLS_PAGE_SIZE = 500
+
 RAINFALLS_QUERY = """
-query GetRainfalls($farmId: String!, $sensorId: String!) {
+query GetRainfalls($farmId: String!, $sensorId: String!, $limit: Int!, $skip: Int!) {
   rainfalls(filter: {
     farmId: { _eq: $farmId }
     sensorId: { _eq: $sensorId }
-  }) {
+  }, limit: $limit, skip: $skip) {
     id
     time
     value
@@ -136,9 +139,8 @@ async def get_rainfalls(
 ) -> list[dict]:
     """Get rainfall records for a sensor.
 
-    Note:
-        Date filtering is not yet supported with variables due to complex
-        filter syntax. Currently returns all records for the sensor.
+    AgriWebb caps each response at RAINFALLS_PAGE_SIZE records, so this pages
+    with limit/skip until a short page comes back.
     """
     from agriwebb.core.client import graphql_with_retry
 
@@ -148,7 +150,7 @@ async def get_rainfalls(
 
     if start_date or end_date:
         # Build parameterized time-filtered query
-        var_defs = ["$farmId: String!", "$sensorId: String!"]
+        var_defs = ["$farmId: String!", "$sensorId: String!", "$limit: Int!", "$skip: Int!"]
         time_filter_parts = []
         variables = {
             "farmId": settings.agriwebb_farm_id,
@@ -170,7 +172,7 @@ async def get_rainfalls(
             farmId: {{ _eq: $farmId }}
             sensorId: {{ _eq: $sensorId }}
             {time_filter}
-          }}) {{
+          }}, limit: $limit, skip: $skip) {{
             id
             time
             value
@@ -180,12 +182,18 @@ async def get_rainfalls(
           }}
         }}
         """
-        result = await graphql_with_retry(query, variables)
     else:
         variables = {
             "farmId": settings.agriwebb_farm_id,
             "sensorId": sensor,
         }
-        result = await graphql_with_retry(RAINFALLS_QUERY, variables)
+        query = RAINFALLS_QUERY
 
-    return result.get("data", {}).get("rainfalls", [])
+    rainfalls: list[dict] = []
+    while True:
+        page_vars = {**variables, "limit": RAINFALLS_PAGE_SIZE, "skip": len(rainfalls)}
+        result = await graphql_with_retry(query, page_vars)
+        page = result.get("data", {}).get("rainfalls", [])
+        rainfalls.extend(page)
+        if len(page) < RAINFALLS_PAGE_SIZE:
+            return rainfalls

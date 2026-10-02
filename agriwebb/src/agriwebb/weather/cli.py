@@ -9,6 +9,7 @@ AgriWebb integration and user-facing commands.
 
 import argparse
 import asyncio
+import hashlib
 from datetime import UTC, date, datetime, timedelta
 from typing import TypedDict
 
@@ -185,6 +186,11 @@ async def cmd_forecast(args: argparse.Namespace) -> None:
     await openmeteo.show_weather_forecast(days=days)
 
 
+def station_fingerprint(station_id: str) -> str:
+    """Short, non-reversible tag for a station ID that survives CI secret masking."""
+    return hashlib.sha256(station_id.encode()).hexdigest()[:8]
+
+
 async def cmd_sync(args: argparse.Namespace) -> None:
     """Sync rainfall data to AgriWebb.
 
@@ -210,12 +216,17 @@ async def cmd_sync(args: argparse.Namespace) -> None:
 
     print(f"Syncing rainfall from {start_date} to {end_date}...")
     print(f"Sources: NOAA station {settings.ncei_station_id} + Open-Meteo")
+    # CI masks the station ID (it's a secret); the fingerprint lets you compare runs
+    print(f"NOAA station fingerprint: {station_fingerprint(settings.ncei_station_id)}")
 
     # Fetch weather data from both sources
     all_weather = await ncei.fetch_combined_precipitation(start_date, end_date)
     noaa_count = sum(1 for w in all_weather if w.get("source") == "noaa")
     openmeteo_count = sum(1 for w in all_weather if w.get("source") == "open-meteo")
     print(f"Retrieved {len(all_weather)} days: {noaa_count} from NOAA, {openmeteo_count} from Open-Meteo")
+    noaa_dates = [w["date"] for w in all_weather if w.get("source") == "noaa"]
+    if noaa_dates:
+        print(f"NOAA coverage: {min(noaa_dates)} to {max(noaa_dates)}")
 
     # Fetch existing records (unless --force)
     existing_by_date: dict[str, float] = {}
