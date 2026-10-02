@@ -746,6 +746,7 @@ async def get_purebred_animals(breed: str, year: int | None = None, on_farm_only
             "name": r.name,
             "animalId": r.animal_id,
             "label": r.breed_label,
+            "crossLabel": r.cross_label,
             "composition": r.rounded_composition,
         }
         if status == "unverified":

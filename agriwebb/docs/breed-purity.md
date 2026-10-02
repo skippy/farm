@@ -22,7 +22,22 @@ parentage:
 2. Founders' breed status is asserted by the shepherd in
    **`src/agriwebb/analysis/lineage/founders.json`** (checked in; edit by hand).
 3. Composition = average of the two parents' compositions. Unclassified founders
-   and missing parents contribute `"unknown"`.
+   and missing parents contribute `"unknown"`. A known-cross founder with a
+   breed-specific label but no fractions (e.g. `"Bluefaced Leicester X"`)
+   contributes that label as its own bucket; generic labels (`"1st Cross"`)
+   contribute `"unknown"`.
+
+### Farm cross labels (`cross_label` / `crossLabel`)
+
+Shorthand the farm uses, derived from composition (a `"<Breed> X"` bucket
+counts toward its base breed):
+
+| Label | Rule |
+|-------|------|
+| `Finn` / `NCC` / `BFL` | verified purebred |
+| `BFF` | exactly ½ Finn + ½ BFL (or BFL X) |
+| `Finn X` / `NCC X` / `BFL X` | one breed holds more than half |
+| *(none)* | no dominant breed (e.g. ½ Finn ½ NCC), or unverified |
 
 ### Verdicts
 
@@ -56,7 +71,7 @@ Paths below are relative to the `agriwebb/` package directory; the file is
 | `aliases` | alternate spellings / VIDs; matching is case- and punctuation-insensitive |
 | `breed` | canonical breed (required when `purebred` is `true`) |
 | `purebred` | `true` / `false` / `null` (unclassified) |
-| `composition` | optional for `purebred: false`, e.g. `{"Finnish Landrace": 0.5, "Bluefaced Leicester": 0.5}`; fractions are normalised |
+| `composition` | optional for `purebred: false`, e.g. `{"Finnish Landrace": 0.5, "Bluefaced Leicester": 0.5}`; fractions are normalised. Omitted + breed-specific label (`"Bluefaced Leicester X"`) → that label is the whole composition |
 | `notes` | provenance of the verdict |
 
 Loading fails loudly (`RegistryError`) on invalid JSON, a missing `id`,

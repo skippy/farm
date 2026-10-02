@@ -75,6 +75,12 @@ class TestNormalisation:
         assert canonical_breed("Bluefaced Leicester X") == "Bluefaced Leicester X"
         assert canonical_breed(None) == "?"
 
+    def test_canonical_breed_farm_cross_shorthand(self):
+        assert canonical_breed("bflx") == "Bluefaced Leicester X"
+        assert canonical_breed("BFL X") == "Bluefaced Leicester X"
+        assert canonical_breed("Finn X") == "Finnish Landrace X"
+        assert canonical_breed("NCC X") == "North Country Cheviot X"
+
 
 # ---------------------------------------------------------------------------
 # Registry
@@ -110,6 +116,14 @@ class TestFounderRegistry:
     def test_composition_unknown_when_unclassified(self):
         assert Founder(id="X").get_composition() == {"unknown": 1.0}
         assert Founder(id="X", purebred=False).get_composition() == {"unknown": 1.0}
+
+    def test_known_cross_with_breed_label_contributes_that_label(self):
+        f = Founder(id="WW02", breed="Bluefaced Leicester X", purebred=False)
+        assert f.get_composition() == {"Bluefaced Leicester X": 1.0}
+
+    def test_generic_cross_label_is_still_unknown(self):
+        assert Founder(id="X", breed="1st Cross", purebred=False).get_composition() == {"unknown": 1.0}
+        assert Founder(id="X", breed="2nd Cross", purebred=False).get_composition() == {"unknown": 1.0}
 
     def test_composition_fractions_are_normalised(self):
         f = Founder(id="X", purebred=False, composition={"A": 0.3, "B": 0.3})
@@ -251,10 +265,11 @@ class TestComputePurity:
         assert r.purebred is False
         assert r.purebred_breed is None
         assert r.status == "mixed"
-        # Composition: 1/2 Madrigal (all Finn) + 1/4 Solar (unknown) + 1/8 BLUEMAN (BFL) + 1/8 WW02 (cross, unknown)
+        # Composition: 1/2 Madrigal (all Finn) + 1/4 Solar (unknown) + 1/8 BLUEMAN (BFL) + 1/8 WW02 (BFL X)
         assert r.composition["Finnish Landrace"] == pytest.approx(0.5)
         assert r.composition["Bluefaced Leicester"] == pytest.approx(0.125)
-        assert r.composition["unknown"] == pytest.approx(0.375)
+        assert r.composition["Bluefaced Leicester X"] == pytest.approx(0.125)
+        assert r.composition["unknown"] == pytest.approx(0.25)
         assert sorted(r.unresolved) == ["Conroy", "Delia"]
 
     def test_unresolved_founder_makes_purity_unverified(self, finn_reg):
@@ -483,3 +498,49 @@ class TestFindAnimal:
     def test_non_digit_miss_returns_none(self, herd):
         assert find_animal("abc123", herd, _by_id(*herd)) is None
         assert find_animal("   ", herd, _by_id(*herd)) is None
+
+
+# ---------------------------------------------------------------------------
+# Farm cross labels (Finn X / BFL X / NCC X / BFF)
+# ---------------------------------------------------------------------------
+
+
+def _result(composition: dict[str, float], purebred: bool | None = False, breed: str | None = None) -> PurityResult:
+    return PurityResult(
+        animal_id="x",
+        name="X",
+        breed_label="?",
+        composition=composition,
+        purebred=purebred,
+        purebred_breed=breed,
+        founders=[],
+        unresolved=[],
+        gaps=[],
+    )
+
+
+class TestCrossLabel:
+    def test_purebred_uses_short_breed_name(self):
+        assert _result({"Finnish Landrace": 1.0}, purebred=True, breed="Finnish Landrace").cross_label == "Finn"
+        r = _result({"North Country Cheviot": 1.0}, purebred=True, breed="North Country Cheviot")
+        assert r.cross_label == "NCC"
+
+    def test_bff_is_half_finn_half_bfl_cross(self):
+        assert _result({"Finnish Landrace": 0.5, "Bluefaced Leicester X": 0.5}).cross_label == "BFF"
+        assert _result({"Finnish Landrace": 0.5, "Bluefaced Leicester": 0.5}).cross_label == "BFF"
+        mixed_bfl = {"Finnish Landrace": 0.5, "Bluefaced Leicester": 0.25, "Bluefaced Leicester X": 0.25}
+        assert _result(mixed_bfl).cross_label == "BFF"
+
+    def test_dominant_breed_gets_x_suffix(self):
+        assert _result({"Finnish Landrace": 0.75, "Bluefaced Leicester X": 0.25}).cross_label == "Finn X"
+        assert _result({"Finnish Landrace": 0.875, "unknown": 0.125}).cross_label == "Finn X"
+        assert _result({"North Country Cheviot": 0.75, "Finnish Landrace": 0.25}).cross_label == "NCC X"
+        assert _result({"Bluefaced Leicester X": 0.75, "Finnish Landrace": 0.25}).cross_label == "BFL X"
+
+    def test_no_dominant_breed_has_no_label(self):
+        assert _result({"Finnish Landrace": 0.5, "North Country Cheviot": 0.5}).cross_label is None
+        assert _result({"Finnish Landrace": 0.5, "unknown": 0.5}).cross_label is None
+        assert _result({"Finnish Landrace": 0.5, "unknown": 0.5}, purebred=None).cross_label is None
+
+    def test_cross_label_in_to_dict(self):
+        assert _result({"Finnish Landrace": 0.75, "unknown": 0.25}).to_dict()["cross_label"] == "Finn X"

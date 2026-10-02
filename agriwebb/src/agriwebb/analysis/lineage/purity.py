@@ -68,7 +68,29 @@ _CANONICAL_BREEDS = {
     "ncc": "North Country Cheviot",
     "bluefaced leicester": "Bluefaced Leicester",
     "bfl": "Bluefaced Leicester",
+    "finnish landrace x": "Finnish Landrace X",
+    "finish landrace x": "Finnish Landrace X",
+    "finn x": "Finnish Landrace X",
+    "finnx": "Finnish Landrace X",
+    "north country cheviot x": "North Country Cheviot X",
+    "ncc x": "North Country Cheviot X",
+    "nccx": "North Country Cheviot X",
+    "bluefaced leicester x": "Bluefaced Leicester X",
+    "bfl x": "Bluefaced Leicester X",
+    "bflx": "Bluefaced Leicester X",
 }
+
+# Farm shorthand for breeds; a "<Breed> X" composition bucket counts toward its base breed.
+_SHORT_BREEDS = {
+    "Finnish Landrace": "Finn",
+    "North Country Cheviot": "NCC",
+    "Bluefaced Leicester": "BFL",
+}
+
+# Cross labels that say nothing about *which* breeds are involved.
+_GENERIC_CROSS_LABELS = {"1st cross", "2nd cross", "3rd cross", "crossbred", "cross", "x", "mixed"}
+
+_HALF_TOL = 1e-6
 
 _NON_ALNUM = re.compile(r"[^A-Z0-9]+")
 
@@ -130,13 +152,20 @@ class Founder:
         return {normalize_key(self.id), *(normalize_key(a) for a in self.aliases)} - {""}
 
     def get_composition(self) -> dict[str, float]:
-        """Breed fractions this founder contributes (``{"unknown": 1.0}`` when unclassified)."""
+        """Breed fractions this founder contributes (``{"unknown": 1.0}`` when unclassified).
+
+        A known cross with no fractions but a breed-specific label (e.g.
+        ``"Bluefaced Leicester X"``) contributes that label as its own bucket;
+        generic labels like ``"1st Cross"`` stay unknown.
+        """
         if self.purebred is True and self.breed:
             return {canonical_breed(self.breed): 1.0}
         if self.purebred is False and self.composition:
             total = sum(self.composition.values())
             if total > 0:
                 return {canonical_breed(k): v / total for k, v in self.composition.items() if v > 0}
+        if self.purebred is False and self.breed and self.breed.strip().lower() not in _GENERIC_CROSS_LABELS:
+            return {canonical_breed(self.breed): 1.0}
         return {UNKNOWN: 1.0}
 
 
@@ -294,11 +323,44 @@ class PurityResult:
     def rounded_composition(self) -> dict[str, float]:
         return {k: round(v, 4) for k, v in self.composition.items()}
 
+    @property
+    def cross_label(self) -> str | None:
+        """Farm shorthand: ``Finn`` / ``NCC`` / ``BFL`` for verified purebreds,
+        ``BFF`` for a half-Finn half-BFL(-cross), ``<Breed> X`` when one breed
+        holds more than half, else ``None`` (no dominant breed or unverified).
+        """
+        if self.purebred is True:
+            return _short_breed(self.purebred_breed) if self.purebred_breed else None
+        if self.purebred is not False:
+            return None
+        by_base: dict[str, float] = defaultdict(float)
+        for k, v in self.composition.items():
+            if k != UNKNOWN:
+                by_base[_base_breed(k)] += v
+        finn = by_base.get("Finnish Landrace", 0.0)
+        bfl = by_base.get("Bluefaced Leicester", 0.0)
+        if abs(finn - 0.5) < _HALF_TOL and abs(bfl - 0.5) < _HALF_TOL:
+            return "BFF"
+        dominant = max(by_base.items(), key=lambda kv: kv[1], default=None)
+        if dominant is None or dominant[1] <= 0.5 + _HALF_TOL:
+            return None
+        return f"{_short_breed(dominant[0])} X"
+
     def to_dict(self) -> dict:
         d = asdict(self)
         d["status"] = self.status
         d["composition"] = self.rounded_composition
+        d["cross_label"] = self.cross_label
         return d
+
+
+def _base_breed(bucket: str) -> str:
+    """``'Bluefaced Leicester X'`` -> ``'Bluefaced Leicester'``."""
+    return bucket[:-2] if bucket.endswith(" X") else bucket
+
+
+def _short_breed(breed: str) -> str:
+    return _SHORT_BREEDS.get(breed, breed)
 
 
 @dataclass
