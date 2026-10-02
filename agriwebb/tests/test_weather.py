@@ -228,8 +228,71 @@ class TestSaveWeatherJson:
         assert path.name == "custom.json"
 
 
+class TestMissingPrecipitation:
+    """NOAA rows without a PRCP reading must not become 0.00" days."""
+
+    async def test_flags_missing_prcp(self, mock_ncei):
+        mock_ncei.get("/access/services/data/v1").mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {"DATE": "2026-01-14", "STATION": "USW00094276", "PRCP": "", "TMAX": "50"},
+                    {"DATE": "2026-01-15", "STATION": "USW00094276", "PRCP": "0.00"},
+                ],
+            )
+        )
+
+        result = await weather.fetch_ncei_date_range(date(2026, 1, 14), date(2026, 1, 15))
+
+        assert result[0]["precipitation_missing"] is True
+        assert result[1]["precipitation_missing"] is False
+
+    async def test_combined_falls_back_to_openmeteo(self, monkeypatch):
+        from agriwebb.weather import ncei
+
+        async def fake_noaa(start, end):
+            return [
+                {"date": "2026-01-14", "station": "S", "precipitation_inches": 0.0, "precipitation_missing": True},
+                {"date": "2026-01-15", "station": "S", "precipitation_inches": 0.0, "precipitation_missing": False},
+            ]
+
+        async def fake_openmeteo(start, end):
+            return [
+                {"date": "2026-01-14", "source": "open-meteo", "precipitation_inches": 0.3},
+                {"date": "2026-01-15", "source": "open-meteo", "precipitation_inches": 0.5},
+            ]
+
+        monkeypatch.setattr(ncei, "fetch_ncei_date_range", fake_noaa)
+        monkeypatch.setattr(ncei, "fetch_openmeteo_precipitation", fake_openmeteo)
+
+        result = await ncei.fetch_combined_precipitation(date(2026, 1, 14), date(2026, 1, 15))
+
+        assert [(r["date"], r["source"], r["precipitation_inches"]) for r in result] == [
+            ("2026-01-14", "open-meteo", 0.3),
+            ("2026-01-15", "noaa", 0.0),
+        ]
+
+
 class TestGetRainfalls:
     """Tests for the get_rainfalls function in client module."""
+
+    async def test_pages_past_server_cap(self, mock_agriwebb):
+        """AgriWebb caps responses at 500; keep paging with skip until a short page."""
+        page_size = weather_api.RAINFALLS_PAGE_SIZE
+        full = [{"id": f"r{i}", "time": i, "value": 1.0} for i in range(page_size)]
+        short = [{"id": "last", "time": 9999, "value": 2.0}]
+        route = mock_agriwebb.post("/v2").mock(
+            side_effect=[
+                httpx.Response(200, json={"data": {"rainfalls": full}}),
+                httpx.Response(200, json={"data": {"rainfalls": short}}),
+            ]
+        )
+
+        result = await weather_api.get_rainfalls(start_date="2024-01-01")
+
+        assert len(result) == page_size + 1
+        skips = [json.loads(c.request.content)["variables"]["skip"] for c in route.calls]
+        assert skips == [0, page_size]
 
     async def test_returns_rainfall_list(self, mock_agriwebb):
         """Verify rainfalls are returned."""

@@ -68,11 +68,15 @@ async def fetch_ncei_date_range(start_date: date, end_date: date) -> list[dict]:
 
     results = []
     for record in data:
+        prcp = (record.get("PRCP") or "").strip()
         results.append(
             {
                 "date": record.get("DATE"),
                 "station": record.get("STATION"),
-                "precipitation_inches": float(record.get("PRCP", 0) or 0),
+                "precipitation_inches": float(prcp or 0),
+                # NOAA sometimes reports temps for a day without a precip reading;
+                # don't mistake that for a dry day.
+                "precipitation_missing": not prcp,
                 "temp_max_f": float(record.get("TMAX")) if record.get("TMAX") else None,
                 "temp_min_f": float(record.get("TMIN")) if record.get("TMIN") else None,
             }
@@ -160,8 +164,16 @@ async def fetch_combined_precipitation(
         print(f"Warning: Open-Meteo unavailable ({e}), using NOAA data only")
         openmeteo_data = []
 
-    # Index NOAA data by date
-    noaa_by_date = {r["date"]: r for r in noaa_data}
+    # Index NOAA data by date, skipping days with no precip reading so they
+    # fall back to Open-Meteo instead of being pushed as 0.00"
+    noaa_by_date = {r["date"]: r for r in noaa_data if not r.get("precipitation_missing")}
+    missing = sorted(r["date"] for r in noaa_data if r.get("precipitation_missing"))
+    if missing:
+        print(f"Warning: NOAA has no precipitation reading for {len(missing)} day(s): {', '.join(missing)}")
+
+    stations = sorted({r["station"] for r in noaa_data if r.get("station")})
+    if stations and stations != [settings.ncei_station_id]:
+        print(f"Warning: NOAA returned data for station(s) {', '.join(stations)}, expected {settings.ncei_station_id}")
 
     # Index Open-Meteo data by date
     openmeteo_by_date = {r["date"]: r for r in openmeteo_data}

@@ -119,3 +119,19 @@ jobs:
           else
             echo "- All data synced to AgriWebb" >> $GITHUB_STEP_SUMMARY
           fi
+
+  # GitHub disables scheduled workflows after 60 days without repo activity
+  # (this silently stopped rainfall sync in Jun 2026). Re-enabling via the API
+  # resets that timer without needing commits.
+  keepalive:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Keep scheduled workflows enabled
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for wf in daily-sync.yml weekly-sync.yml; do
+            gh api -X PUT "repos/${{ github.repository }}/actions/workflows/$wf/enable"
+          done
