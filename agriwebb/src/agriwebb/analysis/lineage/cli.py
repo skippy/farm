@@ -81,6 +81,8 @@ def cmd_purity(args: argparse.Namespace) -> int:
         print(json.dumps(r.to_dict(), indent=2))
         return 0
     verdict = {True: f"PUREBRED {r.purebred_breed}", False: "MIXED", None: "UNVERIFIED"}[r.purebred]
+    if r.cross_label and r.purebred is False:
+        verdict += f" ({r.cross_label})"
     print(f"\n{r.name}  (label: {r.breed_label})  ->  {verdict}")
     print(f"  composition: {_fmt_comp(r.composition)}")
     if r.founders:
@@ -109,7 +111,7 @@ def cmd_purebred(args: argparse.Namespace) -> int:
             if status == "unverified":
                 extra = "  needs: " + ", ".join(r.unresolved + r.gaps)
             elif status == "mixed":
-                extra = "  " + _fmt_comp(r.composition)
+                extra = f"  {r.cross_label or '-':7} " + _fmt_comp(r.composition)
             print(f"  {r.name:16} label={r.breed_label:24}{extra}")
     return 0
 
